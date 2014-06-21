@@ -1,0 +1,11 @@
+nbwmon
+======
+
+about
+-----
+ncurses bandwidth monitor
+
+features
+--------
+bandwidth graph
+bandwidth, peak, transfer, packets and errors

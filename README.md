@@ -1,4 +1,0 @@
-nbwmon
-======
-
-ncurses bandwidth monitor
