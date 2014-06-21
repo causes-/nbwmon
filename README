@@ -7,5 +7,5 @@ ncurses bandwidth monitor
 
 features
 --------
-bandwidth graph
-bandwidth, peak, transfer, packets and errors
+print bandwidth graph
+print bandwidth, peak, traffic and packets

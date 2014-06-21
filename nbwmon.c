@@ -2,14 +2,16 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <ctype.h>
 #include <ncurses.h>
 #include <unistd.h>
 
-#define LEN 80
+#define LEN 90
+#define ROWLEN 8
 
 char iface[LEN+1] = "wlan0";
-int delay = 2;
-int ident = LEN / 4;
+int delay = 1;
+int indent = LEN/4;
 
 struct data {
 	// KB/s
@@ -19,6 +21,7 @@ struct data {
 	float rxmax;
 	float txmax;
 	float max;
+	float max2;
 	// total traffic
 	int rx;
 	int tx;
@@ -27,14 +30,11 @@ struct data {
 	// packets
 	int rxp;
 	int txp;
-	// errors
-	int rxe;
-	int txe;
 	// bandwidth graph
 	float rxgraphs[LEN];
 	float txgraphs[LEN];
-	bool rxgraph[10][LEN];
-	bool txgraph[10][LEN];
+	bool rxgraph[ROWLEN][LEN];
+	bool txgraph[ROWLEN][LEN];
 };
 
 int arg(int argc, char *argv[]) {
@@ -74,7 +74,7 @@ long fgetint(char *file) {
 
 	if ((fp = fopen(file, "r")) == NULL) {
 		endwin();
-		fprintf(stderr, "cant read: %s\n", file);
+		fprintf(stderr, "cant find %s (%s)\n\n", iface, file);
 		exit(1);
 	}
 
@@ -87,65 +87,73 @@ long fgetint(char *file) {
 void printstats(struct data d) {
 	int x, y;
 	char str[LEN+1];
+	char maxspeed[LEN/4] = "";
+	char minspeed[LEN/4] = "";
 
 	clear();
 
-	sprintf(str, "interface: %s delay: %d sec\n\n", iface, delay);
-	addstr(str);
-	sprintf(str, "%*s %*s %s\n", ident+3, "RX", ident-3, "", "TX");
-	addstr(str);
-
-	sprintf(str, "%-*s %-*.1f %-*.1f KB/s\n", ident, "speed", ident, d.rxs, ident, d.txs);
-	addstr(str);
-	sprintf(str, "%-*s %-*.1f %-*.1f KB/s\n", ident, "peak", ident, d.rxmax, ident, d.txmax);
-	addstr(str);
-	sprintf(str, "%-*s %-*.1f %-*.1f MB\n", ident, "total", ident,
-			(float) d.rx2 / 1024000, ident, (float) d.tx2 / 1024000);
-	addstr(str);
-	sprintf(str, "%-*s %-*d %-*d total\n", ident, "packets", ident, d.rxp, ident, d.txp);
-	addstr(str);
-	sprintf(str, "%-*s %-*d %-*d total\n\n", ident, "errors", ident, d.rxe, ident, d.txe);
+	// print stats
+	sprintf(str, "%*s %*s %s\n", indent+3, "RX", indent-3, "", "TX");
 	addstr(str);
 
-	for (x = 9; x >= 0; x--) {
-		for (y = 0; y < LEN; y++) {
-			if (d.rxgraph[x][y]) {
-				addch('#');
-			} else {
-				addch(' ');
-			}
-		}
-		addch('\n');
-	}
-
+	sprintf(str, "%-*s%-*.1f%-*.1fKB/s\n", indent, "speed", indent, d.rxs, indent, d.txs);
+	addstr(str);
+	sprintf(str, "%-*s%-*.1f%-*.1fKB/s\n", indent, "peak", indent, d.rxmax, indent, d.txmax);
+	addstr(str);
+	sprintf(str, "%-*s%-*.1f%-*.1fMB\n", indent, "traffic", indent,
+			(float) d.rx2 / 1024000, indent, (float) d.tx2 / 1024000);
+	addstr(str);
+	sprintf(str, "%-*s%-*d%-*dtotal\n", indent, "packets", indent, d.rxp, indent, d.txp);
+	addstr(str);
 	addch('\n');
 
-	for (x = 0; x < 10; x++) {
+	// print graph
+	snprintf(maxspeed, LEN-1, "RX %.1f KB/s", d.max);
+	snprintf(minspeed, LEN-1, "RX 0.0 KB/s");
+	for (x = ROWLEN-1; x >= 0; x--) {
 		for (y = 0; y < LEN; y++) {
-			if (d.txgraph[x][y]) {
-				addch('#');
+			if (x == ROWLEN-1 && y < LEN/4 && maxspeed[y] != '\0') {
+				addch(maxspeed[y]);
+			} else if (x == 0 && y < LEN/4 && minspeed[y] != '\0') {
+				addch(minspeed[y]);
+			} else if (d.rxgraph[x][y]) {
+				addch('*');
 			} else {
 				addch(' ');
 			}
 		}
 		addch('\n');
 	}
+	addch('\n');
+	snprintf(maxspeed, LEN-1, "TX %.1f KB/s", d.max);
+	snprintf(minspeed, LEN-1, "TX 0.0 KB/s");
+	for (x = 0; x < ROWLEN; x++) {
+		for (y = 0; y < LEN; y++) {
+			if (x == ROWLEN-1 && y < LEN/4 && maxspeed[y] != '\0') {
+				addch(maxspeed[y]);
+			} else if (x == 0 && y < LEN/4 && minspeed[y] != '\0') {
+				addch(minspeed[y]);
+			} else if (d.txgraph[x][y]) {
+				addch('*');
+			} else {
+				addch(' ');
+			}
+		}
+		addch('\n');
+	}
+	addch('\n');
 
 	refresh();
 }
 
 struct data getdata(struct data d) {
 	char str[LEN+1];
+	int i;
 
 	sprintf(str, "/sys/class/net/%s/statistics/rx_packets", iface);
 	d.rxp = fgetint(str);
 	sprintf(str, "/sys/class/net/%s/statistics/tx_packets", iface);
 	d.txp = fgetint(str);
-
-	sprintf(str, "/sys/class/net/%s/statistics/rx_errors", iface);
-	d.rxe = fgetint(str);
-	sprintf(str, "/sys/class/net/%s/statistics/tx_errors", iface);
-	d.txe = fgetint(str);
 
 	sprintf(str, "/sys/class/net/%s/statistics/rx_bytes", iface);
 	d.rx = fgetint(str);
@@ -162,8 +170,17 @@ struct data getdata(struct data d) {
 	d.rxs = (float) (d.rx2 - d.rx) / 1024 / delay;
 	d.txs = (float) (d.tx2 - d.tx) / 1024 / delay;
 
-	d.max = d.rxmax = (d.rxs > d.max ? d.rxs : d.max);
-	d.max = d.txmax = (d.txs > d.max ? d.txs : d.max);
+	d.rxmax = (d.rxs > d.rxmax ? d.rxs : d.rxmax);
+	d.txmax = (d.txs > d.txmax ? d.txs : d.txmax);
+
+	d.max2 = d.max;
+	d.max = 0;
+	for (i = 0; i < LEN; i++) {
+		if (d.rxgraphs[i] > d.max)
+			d.max = d.rxgraphs[i];
+		if (d.txgraphs[i] > d.max)
+			d.max = d.txgraphs[i];
+	}
 
 	return d;
 }
@@ -173,11 +190,11 @@ struct data updategraph(struct data d) {
 	float i, j;
 
 	// scale graph
-	if (d.max == d.rxs || d.max == d.txs) {
-		for (x = 0; x < 10; x++) {
+	if (d.max == d.rxs || d.max == d.txs || d.max != d.max2) {
+		for (x = 0; x < ROWLEN; x++) {
 			for (y = 0; y < LEN; y++) {
-				i = (float) d.rxgraphs[y] / d.max * 10;
-				j = (float) d.txgraphs[y] / d.max * 10;
+				i = (float) d.rxgraphs[y] / d.max * ROWLEN;
+				j = (float) d.txgraphs[y] / d.max * ROWLEN;
 				if (i > x)
 					d.rxgraph[x][y] = true;
 				else
@@ -191,7 +208,7 @@ struct data updategraph(struct data d) {
 	}
 
 	// move graph
-	for (x = 0; x < 10; x++) {
+	for (x = 0; x < ROWLEN; x++) {
 		for (y = 0; y < LEN-1; y++) {
 			d.rxgraph[x][y] = d.rxgraph[x][y+1];
 			d.txgraph[x][y] = d.txgraph[x][y+1];
@@ -203,9 +220,9 @@ struct data updategraph(struct data d) {
 	}
 
 	// create new graph line
-	i = (float) d.rxs / d.max * 10;
-	j = (float) d.txs / d.max * 10;
-	for (x = 0; x < 10; x++) {
+	i = (float) d.rxs / d.max * ROWLEN;
+	j = (float) d.txs / d.max * ROWLEN;
+	for (x = 0; x < ROWLEN; x++) {
 		if (i > x)
 			d.rxgraph[x][LEN-1] = true;
 		else
@@ -222,16 +239,24 @@ struct data updategraph(struct data d) {
 }
 
 int main(int argc, char *argv[]) {
-	struct data d = {.rxs = 0, .txs = 0, .rxmax = 0, .txmax = 0, .max = 0};
+	char key;
+	struct data d = {.rxs = 0, .txs = 0};
 
 	arg(argc, argv);
 
 	initscr();
-	noecho();
 	curs_set(0);
+	noecho();
+	nodelay(stdscr, TRUE);
 
 	while (1) {
 		printstats(d);
+
+		key = getch();
+		if ( key != ERR && tolower(key) == 'q') {
+			endwin();
+			exit(1);
+		}
 
 		d = getdata(d);
 
