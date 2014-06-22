@@ -6,8 +6,8 @@
 #include <ncurses.h>
 #include <unistd.h>
 
-#define LEN 90
-#define ROWLEN 8
+#define LEN 100
+#define GRAPHLEN 8
 
 char iface[LEN+1] = "wlan0";
 int delay = 1;
@@ -33,8 +33,8 @@ struct data {
 	// bandwidth graph
 	float rxgraphs[LEN];
 	float txgraphs[LEN];
-	bool rxgraph[ROWLEN][LEN];
-	bool txgraph[ROWLEN][LEN];
+	bool rxgraph[GRAPHLEN][LEN];
+	bool txgraph[GRAPHLEN][LEN];
 };
 
 int arg(int argc, char *argv[]) {
@@ -110,9 +110,9 @@ void printstats(struct data d) {
 	// print graph
 	snprintf(maxspeed, LEN-1, "RX %.1f KB/s", d.max);
 	snprintf(minspeed, LEN-1, "RX 0.0 KB/s");
-	for (x = ROWLEN-1; x >= 0; x--) {
+	for (x = GRAPHLEN-1; x >= 0; x--) {
 		for (y = 0; y < LEN; y++) {
-			if (x == ROWLEN-1 && y < LEN/4 && maxspeed[y] != '\0') {
+			if (x == GRAPHLEN-1 && y < LEN/4 && maxspeed[y] != '\0') {
 				addch(maxspeed[y]);
 			} else if (x == 0 && y < LEN/4 && minspeed[y] != '\0') {
 				addch(minspeed[y]);
@@ -127,9 +127,9 @@ void printstats(struct data d) {
 	addch('\n');
 	snprintf(maxspeed, LEN-1, "TX %.1f KB/s", d.max);
 	snprintf(minspeed, LEN-1, "TX 0.0 KB/s");
-	for (x = 0; x < ROWLEN; x++) {
+	for (x = 0; x < GRAPHLEN; x++) {
 		for (y = 0; y < LEN; y++) {
-			if (x == ROWLEN-1 && y < LEN/4 && maxspeed[y] != '\0') {
+			if (x == GRAPHLEN-1 && y < LEN/4 && maxspeed[y] != '\0') {
 				addch(maxspeed[y]);
 			} else if (x == 0 && y < LEN/4 && minspeed[y] != '\0') {
 				addch(minspeed[y]);
@@ -191,10 +191,10 @@ struct data updategraph(struct data d) {
 
 	// scale graph
 	if (d.max == d.rxs || d.max == d.txs || d.max != d.max2) {
-		for (x = 0; x < ROWLEN; x++) {
+		for (x = 0; x < GRAPHLEN; x++) {
 			for (y = 0; y < LEN; y++) {
-				i = (float) d.rxgraphs[y] / d.max * ROWLEN;
-				j = (float) d.txgraphs[y] / d.max * ROWLEN;
+				i = (float) d.rxgraphs[y] / d.max * GRAPHLEN;
+				j = (float) d.txgraphs[y] / d.max * GRAPHLEN;
 				if (i > x)
 					d.rxgraph[x][y] = true;
 				else
@@ -208,7 +208,7 @@ struct data updategraph(struct data d) {
 	}
 
 	// move graph
-	for (x = 0; x < ROWLEN; x++) {
+	for (x = 0; x < GRAPHLEN; x++) {
 		for (y = 0; y < LEN-1; y++) {
 			d.rxgraph[x][y] = d.rxgraph[x][y+1];
 			d.txgraph[x][y] = d.txgraph[x][y+1];
@@ -220,9 +220,9 @@ struct data updategraph(struct data d) {
 	}
 
 	// create new graph line
-	i = (float) d.rxs / d.max * ROWLEN;
-	j = (float) d.txs / d.max * ROWLEN;
-	for (x = 0; x < ROWLEN; x++) {
+	i = (float) d.rxs / d.max * GRAPHLEN;
+	j = (float) d.txs / d.max * GRAPHLEN;
+	for (x = 0; x < GRAPHLEN; x++) {
 		if (i > x)
 			d.rxgraph[x][LEN-1] = true;
 		else
