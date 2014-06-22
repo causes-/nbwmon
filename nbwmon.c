@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include <signal.h>
 
-#define GRAPHLEN 10
+#define GRAPHLINES 10
 #define LEN 100
 
 char iface[LEN+1] = "wlan0";
@@ -69,6 +69,13 @@ int arg(int argc, char *argv[]) {
 	return 0;
 }
 
+void sighandler(int signum) {
+	if (signum == SIGWINCH) {
+		resize = true;
+		signal(SIGWINCH, sighandler);
+	}
+}
+
 void quit(int i, struct data d) {
 	free(d.rxgraphs);
 	free(d.txgraphs);
@@ -79,27 +86,26 @@ void quit(int i, struct data d) {
 	exit(i);
 }
 
-void winchhandler(int signum) {
-	if (signum == SIGWINCH) {
-		resize = true;
-		signal(SIGWINCH, winchhandler);
-	}
-}
-
 struct data resizegraph(struct data d) {
+	int COLS2 = COLS;
+
+	// update LINES and COLS
+	endwin();
+	refresh();
+	clear();
+
+	if (COLS == COLS2)
+		return d;
+	
 	free(d.rxgraphs);
 	free(d.txgraphs);
 	free(d.rxgraph);
 	free(d.txgraph);
 
-	endwin();
-	refresh();
-	clear();
-
 	d.rxgraphs = calloc(COLS, sizeof(double));
 	d.txgraphs = calloc(COLS, sizeof(double));
-	d.rxgraph = calloc(GRAPHLEN * COLS, sizeof(bool));
-	d.txgraph = calloc(GRAPHLEN * COLS, sizeof(bool));
+	d.rxgraph = calloc(GRAPHLINES * COLS, sizeof(bool));
+	d.txgraph = calloc(GRAPHLINES * COLS, sizeof(bool));
 
 	if (d.rxgraph == NULL || d.txgraph == NULL || d.rxgraphs == NULL || d.txgraphs == NULL) {
 		fprintf(stderr, "memory allocation failed");
@@ -109,33 +115,17 @@ struct data resizegraph(struct data d) {
 	return d;
 }
 
-long fgetint(char *file) {
-	char line[LEN+1];
-	FILE *fp;
-
-	if ((fp = fopen(file, "r")) == NULL) {
-		endwin();
-		fprintf(stderr, "cant find %s (%s)\n\n", iface, file);
-		exit(1);
-	}
-
-	fgets(line, LEN+1, fp);
-	fclose(fp);
-
-	return strtol(line, NULL, 0);
-}
-
 void printstats(struct data d) {
 	int x, y;
-	char str[LEN+1];
-	char maxspeed[LEN/4+1] = "";
-	char minspeed[LEN/4+1] = "";
+	char str[COLS+1];
+	char maxspeed[COLS/4+1];
+	char minspeed[COLS/4+1];
 	int indent = COLS/4;
 
 	clear();
 
 	// print stats
-	sprintf(str, "%*s%*s%s\n", indent+2, "RX", indent-2, "", "TX");
+	sprintf(str, "%*s%*s\n", indent+2, "RX", indent, "TX");
 	addstr(str);
 
 	sprintf(str, "%-*s%-*.1lf%-*.1lfKB/s\n", indent, "speed", indent, d.rxs, indent, d.txs);
@@ -149,14 +139,17 @@ void printstats(struct data d) {
 	addstr(str);
 	addch('\n');
 
-	// print graph
-	snprintf(maxspeed, LEN/4, "RX %.1f KB/s", d.max);
-	snprintf(minspeed, LEN/4, "RX 0.0 KB/s");
-	for (x = GRAPHLEN-1; x >= 0; x--) {
+	// print RX graph
+	snprintf(maxspeed, COLS/4, "RX %.1f KB/s", d.max);
+	snprintf(minspeed, COLS/4, "RX 0.0 KB/s");
+	for (x = GRAPHLINES-1; x >= 0; x--) {
 		for (y = 0; y < COLS; y++) {
-			if (x == GRAPHLEN-1 && y < LEN/4 && maxspeed[y] != '\0') {
+			// TODO: better method for printing scale 
+			maxspeed[y] == '\0' ? maxspeed[y+1] = '\0' : 0 ;
+			minspeed[y] == '\0' ? minspeed[y+1] = '\0' : 0 ;
+			if (x == GRAPHLINES-1 && y < COLS/4 && maxspeed[y] != '\0') {
 				addch(maxspeed[y]);
-			} else if (x == 0 && y < LEN/4 && minspeed[y] != '\0') {
+			} else if (x == 0 && y < COLS/4 && minspeed[y] != '\0') {
 				addch(minspeed[y]);
 			} else if (*(d.rxgraph + x * COLS + y)) {
 				addch('*');
@@ -166,13 +159,15 @@ void printstats(struct data d) {
 		}
 	}
 	addch('\n');
-	snprintf(maxspeed, LEN/4, "TX %.1f KB/s", d.max);
-	snprintf(minspeed, LEN/4, "TX 0.0 KB/s");
-	for (x = 0; x < GRAPHLEN; x++) {
+
+	// print TX graph
+	snprintf(maxspeed, COLS/4, "TX %.1f KB/s", d.max);
+	snprintf(minspeed, COLS/4, "TX 0.0 KB/s");
+	for (x = 0; x < GRAPHLINES; x++) {
 		for (y = 0; y < COLS; y++) {
-			if (x == GRAPHLEN-1 && y < LEN/4 && maxspeed[y] != '\0') {
+			if (x == GRAPHLINES-1 && y < COLS/4 && maxspeed[y] != '\0') {
 				addch(maxspeed[y]);
-			} else if (x == 0 && y < LEN/4 && minspeed[y] != '\0') {
+			} else if (x == 0 && y < COLS/4 && minspeed[y] != '\0') {
 				addch(minspeed[y]);
 			} else if (*(d.txgraph + x * COLS + y)) {
 				addch('*');
@@ -183,6 +178,23 @@ void printstats(struct data d) {
 	}
 
 	refresh();
+}
+
+long fgetint(char *file) {
+	char line[LEN+1];
+	FILE *fp;
+
+	if ((fp = fopen(file, "r")) == NULL) {
+		// TODO: free memory
+		endwin();
+		fprintf(stderr, "cant find %s (%s)\n\n", iface, file);
+		exit(1);
+	}
+
+	fgets(line, LEN+1, fp);
+	fclose(fp);
+
+	return strtol(line, NULL, 0);
 }
 
 struct data getdata(struct data d) {
@@ -214,6 +226,7 @@ struct data getdata(struct data d) {
 
 	d.max2 = d.max;
 	d.max = 0;
+
 	for (i = 0; i < COLS; i++) {
 		if (d.rxgraphs[i] > d.max)
 			d.max = d.rxgraphs[i];
@@ -228,26 +241,8 @@ struct data updategraph(struct data d) {
 	int x, y;
 	double i, j;
 
-	// scale graph
-	if (d.max == d.rxs || d.max == d.txs || d.max != d.max2) {
-		for (x = 0; x < GRAPHLEN; x++) {
-			for (y = 0; y < COLS; y++) {
-				i = d.rxgraphs[y] / d.max * GRAPHLEN;
-				j = d.txgraphs[y] / d.max * GRAPHLEN;
-				if (i > x)
-					*(d.rxgraph + x * COLS + y) = true;
-				else
-					*(d.rxgraph + x * COLS + y) = false;
-				if (j > x)
-					*(d.txgraph + x * COLS + y) = true;
-				else
-					*(d.txgraph + x * COLS + y) = false;
-			}
-		}
-	}
-
 	// move graph
-	for (x = 0; x < GRAPHLEN; x++) {
+	for (x = 0; x < GRAPHLINES; x++) {
 		for (y = 0; y < COLS-1; y++) {
 			*(d.rxgraph + x * COLS + y) = *(d.rxgraph + x * COLS + y + 1);
 			*(d.txgraph + x * COLS + y) = *(d.txgraph + x * COLS + y + 1);
@@ -259,9 +254,9 @@ struct data updategraph(struct data d) {
 	}
 
 	// create new graph line
-	i = d.rxs / d.max * GRAPHLEN;
-	j = d.txs / d.max * GRAPHLEN;
-	for (x = 0; x < GRAPHLEN; x++) {
+	i = d.rxs / d.max * GRAPHLINES;
+	j = d.txs / d.max * GRAPHLINES;
+	for (x = 0; x < GRAPHLINES; x++) {
 		if (i > x)
 			*(d.rxgraph + x * COLS + COLS - 1) = true;
 		else
@@ -273,6 +268,24 @@ struct data updategraph(struct data d) {
 	}
 	d.rxgraphs[COLS-1] = d.rxs;
 	d.txgraphs[COLS-1] = d.txs;
+
+	// scale graph
+	if (d.max == d.rxs || d.max == d.txs || d.max != d.max2) {
+		for (x = 0; x < GRAPHLINES; x++) {
+			for (y = 0; y < COLS; y++) {
+				i = d.rxgraphs[y] / d.max * GRAPHLINES;
+				j = d.txgraphs[y] / d.max * GRAPHLINES;
+				if (i > x)
+					*(d.rxgraph + x * COLS + y) = true;
+				else
+					*(d.rxgraph + x * COLS + y) = false;
+				if (j > x)
+					*(d.txgraph + x * COLS + y) = true;
+				else
+					*(d.txgraph + x * COLS + y) = false;
+			}
+		}
+	}
 
 	return d;
 }
@@ -291,15 +304,15 @@ int main(int argc, char *argv[]) {
 
 	d.rxgraphs = calloc(COLS, sizeof(double));
 	d.txgraphs = calloc(COLS, sizeof(double));
-	d.rxgraph = calloc(GRAPHLEN * COLS, sizeof(bool));
-	d.txgraph = calloc(GRAPHLEN * COLS, sizeof(bool));
+	d.rxgraph = calloc(GRAPHLINES * COLS, sizeof(bool));
+	d.txgraph = calloc(GRAPHLINES * COLS, sizeof(bool));
 
 	if (d.rxgraph == NULL || d.txgraph == NULL || d.rxgraphs == NULL || d.txgraphs == NULL) {
 		fprintf(stderr, "memory allocation failed");
 		quit(1, d);
 	}
 	
-	signal(SIGWINCH, winchhandler);
+	signal(SIGWINCH, sighandler);
 
 	while (1) {
 		key = getch();
@@ -322,7 +335,6 @@ int main(int argc, char *argv[]) {
 	}
 
 	quit(0, d);
-	endwin();
 
 	return 0;
 }
