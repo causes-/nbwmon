@@ -1,4 +1,4 @@
-CFLAGS=-std=c99 -Wall -Wextra -pedantic -lncurses
+CFLAGS=-std=c99 -Wall -Wextra -pedantic -g -lncurses
 
 all: nbwmon
 
