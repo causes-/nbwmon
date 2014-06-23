@@ -88,20 +88,28 @@ void quit(int i, struct data d) {
 
 struct data resizegraph(struct data d) {
 	int COLS2 = COLS;
+	int x, y;
+	double *rxgraphs;
+	double *txgraphs;
 
 	// update LINES and COLS
 	endwin();
 	refresh();
 	clear();
 
+	// return if width is unchanged
 	if (COLS == COLS2)
 		return d;
 	
-	free(d.rxgraphs);
-	free(d.txgraphs);
+	// save temporary graph speeds
+	rxgraphs = d.rxgraphs;
+	txgraphs = d.txgraphs;
+
+	// free graph
 	free(d.rxgraph);
 	free(d.txgraph);
 
+	// allocate new graph
 	d.rxgraphs = calloc(COLS, sizeof(double));
 	d.txgraphs = calloc(COLS, sizeof(double));
 	d.rxgraph = calloc(GRAPHLINES * COLS, sizeof(bool));
@@ -111,6 +119,19 @@ struct data resizegraph(struct data d) {
 		fprintf(stderr, "memory allocation failed");
 		quit(1, d);
 	}
+
+	// copy temporary graph speeds to new graph
+	for (x = COLS2-1, y = COLS-1; x > 0 && y > 0; x--, y--) {
+		d.rxgraphs[y] = rxgraphs[x];
+		d.txgraphs[y] = txgraphs[x];
+	}
+
+	// free temporary graph speeds
+	free(rxgraphs);
+	free(txgraphs);
+
+	// make updategraph() to redraw graph
+	d.max = 0;
 
 	return d;
 }
