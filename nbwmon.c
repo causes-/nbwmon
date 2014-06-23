@@ -13,6 +13,7 @@
 char iface[LEN+1] = "wlan0";
 int delay = 1;
 bool resize;
+int terminate;
 
 struct data {
 	// KB/s
@@ -73,17 +74,12 @@ void sighandler(int signum) {
 	if (signum == SIGWINCH) {
 		resize = true;
 		signal(SIGWINCH, sighandler);
+	} else if (signum == SIGINT) {
+		terminate = 0;
+	} else if (signum == SIGSEGV) {
+		endwin();
+		terminate = 1;
 	}
-}
-
-void quit(int i, struct data d) {
-	free(d.rxgraphs);
-	free(d.txgraphs);
-	free(d.rxgraph);
-	free(d.txgraph);
-
-	endwin();
-	exit(i);
 }
 
 struct data resizegraph(struct data d) {
@@ -91,6 +87,8 @@ struct data resizegraph(struct data d) {
 	int x, y;
 	double *rxgraphs;
 	double *txgraphs;
+
+	resize = false;
 
 	// update LINES and COLS
 	endwin();
@@ -116,8 +114,12 @@ struct data resizegraph(struct data d) {
 	d.txgraph = calloc(GRAPHLINES * COLS, sizeof(bool));
 
 	if (d.rxgraph == NULL || d.txgraph == NULL || d.rxgraphs == NULL || d.txgraphs == NULL) {
+		endwin();
 		fprintf(stderr, "memory allocation failed");
-		quit(1, d);
+		terminate = 1;
+		free(rxgraphs);
+		free(txgraphs);
+		return d;
 	}
 
 	// copy temporary graph speeds to new graph
@@ -209,7 +211,8 @@ long fgetint(char *file) {
 		// TODO: free memory
 		endwin();
 		fprintf(stderr, "cant find %s (%s)\n\n", iface, file);
-		exit(1);
+		terminate = 1;
+		return terminate;
 	}
 
 	fgets(line, LEN+1, fp);
@@ -226,11 +229,15 @@ struct data getdata(struct data d) {
 	d.rxp = fgetint(str);
 	sprintf(str, "/sys/class/net/%s/statistics/tx_packets", iface);
 	d.txp = fgetint(str);
+	if (terminate != -1)
+		return d;
 
 	sprintf(str, "/sys/class/net/%s/statistics/rx_bytes", iface);
 	d.rx = fgetint(str);
 	sprintf(str, "/sys/class/net/%s/statistics/tx_bytes", iface);
 	d.tx = fgetint(str);
+	if (terminate != -1)
+		return d;
 
 	sleep(delay);
 
@@ -238,6 +245,8 @@ struct data getdata(struct data d) {
 	d.rx2 = fgetint(str);
 	sprintf(str, "/sys/class/net/%s/statistics/tx_bytes", iface);
 	d.tx2 = fgetint(str);
+	if (terminate != -1)
+		return d;
 
 	d.rxs = (d.rx2 - d.rx) / 1024 / delay;
 	d.txs = (d.tx2 - d.tx) / 1024 / delay;
@@ -315,6 +324,7 @@ int main(int argc, char *argv[]) {
 	struct data d = {.rxs = 0, .txs = 0};
 	char key;
 	resize = false;
+	terminate = -1;
 
 	arg(argc, argv);
 
@@ -329,33 +339,45 @@ int main(int argc, char *argv[]) {
 	d.txgraph = calloc(GRAPHLINES * COLS, sizeof(bool));
 
 	if (d.rxgraph == NULL || d.txgraph == NULL || d.rxgraphs == NULL || d.txgraphs == NULL) {
+		endwin();
 		fprintf(stderr, "memory allocation failed");
-		quit(1, d);
+		terminate = 1;
 	}
 	
+	signal(SIGINT, sighandler);
+	signal(SIGSEGV, sighandler);
 	signal(SIGWINCH, sighandler);
 
-	while (1) {
+	while (terminate == -1) {
 		key = getch();
 		if (key != ERR && tolower(key) == 'q') {
-			quit(0, d);
+			terminate = 0;
 		} else if (key != ERR && tolower(key) == 'r') {
 			resize = true;
 		}
 
-		if (resize == true) {
+		if (resize == true)
 			d = resizegraph(d);
-			resize = false;
-		}
+
+		if (terminate != -1)
+			break;
 
 		printstats(d);
 
 		d = getdata(d);
 
+		if (terminate != -1)
+			break;
+
 		d = updategraph(d);
 	}
 
-	quit(0, d);
+	endwin();
 
-	return 0;
+	free(d.rxgraphs);
+	free(d.txgraphs);
+	free(d.rxgraph);
+	free(d.txgraph);
+
+	return terminate == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

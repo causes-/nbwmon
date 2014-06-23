@@ -10,3 +10,4 @@ features
 print bandwidth graph
 print bandwidth, peak, traffic and packets
 scale to full window size
+scale on window resize
