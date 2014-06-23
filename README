@@ -8,6 +8,15 @@ ncurses bandwidth monitor
 features
 --------
 print bandwidth graph
-print bandwidth, peak, traffic and packets
-scale to full window size
-scale on window resize
+print bandwidth, peak and traffic
+scale to full window on start and resize
+support for colors
+
+usage
+-----
+usage: nbwmon [options]
+-h         help
+-n         no colors
+-i <iface> interface
+-d <delay> delay
+-l <lines> graph height

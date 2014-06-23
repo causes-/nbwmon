@@ -12,8 +12,9 @@
 char iface[LEN+1] = "wlan0";
 int delay = 1;
 int graphlines = 10;
-int terminate;
-bool resize;
+int terminate = -1;
+bool resize = false;
+bool colors = true;
 
 struct data {
 	// KB/s
@@ -29,9 +30,6 @@ struct data {
 	long tx;
 	long rx2;
 	long tx2;
-	// packets
-	long rxp;
-	long txp;
 	// graph speeds per bar
 	double *rxgraphs;
 	double *txgraphs;
@@ -44,7 +42,14 @@ int arg(int argc, char *argv[]) {
 	int i;
 
 	for (i = 1; i < argc; i++) {
-		if (!strcmp("-d", argv[i])) {
+		if (!strcmp("-i", argv[i])) {
+			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
+				fprintf(stderr, "error: -i needs parameter\n");
+				endwin();
+				exit(1);
+			}
+			strncpy(iface, argv[++i], LEN);
+		} else if (!strcmp("-d", argv[i])) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
 				fprintf(stderr, "error: -d needs parameter\n");
 				endwin();
@@ -58,18 +63,14 @@ int arg(int argc, char *argv[]) {
 				exit(1);
 			}
 			graphlines = strtol(argv[++i], NULL, 0);
-		} else if (!strcmp("-i", argv[i])) {
-			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
-				fprintf(stderr, "error: -i needs parameter\n");
-				endwin();
-				exit(1);
-			}
-			strncpy(iface, argv[++i], LEN);
+		} else if (!strcmp("-n", argv[i])) {
+			colors = false;
 		} else {
 			fprintf(stderr, "usage: %s [options]\n", argv[0]);
 			fprintf(stderr, "-h         help\n");
-			fprintf(stderr, "-d <delay> delay\n");
+			fprintf(stderr, "-n         no colors\n");
 			fprintf(stderr, "-i <iface> interface\n");
+			fprintf(stderr, "-d <delay> delay\n");
 			fprintf(stderr, "-l <lines> graph height\n");
 			endwin();
 			exit(1);
@@ -217,42 +218,41 @@ struct data updategraph(struct data d) {
 	return d;
 }
 
-void printstats(struct data d) {
+void printgraph(struct data d) {
 	int x, y;
-	char str[COLS+1];
 	char maxspeed[COLS/4+1];
 	char minspeed[COLS/4+1];
 	int indent = COLS/4;
 
 	clear();
 
-	// print stats
-	sprintf(str, "%*s%*s\n", indent+2, "RX", indent, "TX");
-	addstr(str);
+	mvprintw(0, 0, "RX: %.2lf KB/s", d.rxs);
+	mvprintw(0, indent, "TX: %.2lf KB/s", d.txs);
+	mvprintw(0, indent*2, "RX max: %.2lf KB/s", d.rxmax);
+	mvprintw(0, indent*3, "TX max: %.2lf KB/s", d.txmax);
+	mvprintw(1, 0, "RX total: %.2lf MB", (double) d.rx2 / 1024000);
+	mvprintw(1, indent*3, "TX total: %.2lf MB", (double) d.tx2 / 1024000);
 
-	sprintf(str, "%-*s%-*.1lf%-*.1lfKB/s\n", indent, "speed", indent, d.rxs, indent, d.txs);
-	addstr(str);
-	sprintf(str, "%-*s%-*.1lf%-*.1lfKB/s\n", indent, "peak", indent, d.rxmax, indent, d.txmax);
-	addstr(str);
-	sprintf(str, "%-*s%-*.1lf%-*.1lfMB\n", indent, "traffic", indent,
-			(double) d.rx2 / 1024000, indent, (double) d.tx2 / 1024000);
-	addstr(str);
-	sprintf(str, "%-*s%-*ld%-*ldtotal\n", indent, "packets", indent, d.rxp, indent, d.txp);
-	addstr(str);
+	addch('\n');
 	addch('\n');
 
 	// print RX graph
-	snprintf(maxspeed, COLS/4, "RX %.1f KB/s", d.max);
-	snprintf(minspeed, COLS/4, "RX 0.0 KB/s");
+	attron(COLOR_PAIR(1));
+	snprintf(maxspeed, COLS/4, "%.1f KB/s", d.max);
+	snprintf(minspeed, COLS/4, "0.0 KB/s");
 	for (x = graphlines-1; x >= 0; x--) {
 		for (y = 0; y < COLS; y++) {
 			// TODO: better method for printing scale 
-			maxspeed[y] == '\0' ? maxspeed[y+1] = '\0' : 0 ;
-			minspeed[y] == '\0' ? minspeed[y+1] = '\0' : 0 ;
+			maxspeed[y] == '\0' && y < COLS/4 ? maxspeed[y+1] = '\0' : 0 ;
+			minspeed[y] == '\0' && y < COLS/4 ? minspeed[y+1] = '\0' : 0 ;
 			if (x == graphlines-1 && y < COLS/4 && maxspeed[y] != '\0') {
+				attroff(COLOR_PAIR(1));
 				addch(maxspeed[y]);
+				attron(COLOR_PAIR(1));
 			} else if (x == 0 && y < COLS/4 && minspeed[y] != '\0') {
+				attroff(COLOR_PAIR(1));
 				addch(minspeed[y]);
+				attron(COLOR_PAIR(1));
 			} else if (*(d.rxgraph + x * COLS + y)) {
 				addch('*');
 			} else {
@@ -260,17 +260,25 @@ void printstats(struct data d) {
 			}
 		}
 	}
-	addch('\n');
+	attroff(COLOR_PAIR(1));
+
+	if (colors == false)
+		addch('\n');
 
 	// print TX graph
-	snprintf(maxspeed, COLS/4, "TX %.1f KB/s", d.max);
-	snprintf(minspeed, COLS/4, "TX 0.0 KB/s");
+	attron(COLOR_PAIR(2));
+	snprintf(maxspeed, COLS/4, "%.1f KB/s", d.max);
+	snprintf(minspeed, COLS/4, "0.0 KB/s");
 	for (x = 0; x < graphlines; x++) {
 		for (y = 0; y < COLS; y++) {
 			if (x == graphlines-1 && y < COLS/4 && maxspeed[y] != '\0') {
+				attroff(COLOR_PAIR(2));
 				addch(maxspeed[y]);
+				attron(COLOR_PAIR(2));
 			} else if (x == 0 && y < COLS/4 && minspeed[y] != '\0') {
+				attroff(COLOR_PAIR(2));
 				addch(minspeed[y]);
+				attron(COLOR_PAIR(2));
 			} else if (*(d.txgraph + x * COLS + y)) {
 				addch('*');
 			} else {
@@ -278,6 +286,7 @@ void printstats(struct data d) {
 			}
 		}
 	}
+	attroff(COLOR_PAIR(2));
 
 	refresh();
 }
@@ -285,13 +294,6 @@ void printstats(struct data d) {
 struct data getdata(struct data d) {
 	char str[LEN+1];
 	int i;
-
-	sprintf(str, "/sys/class/net/%s/statistics/rx_packets", iface);
-	d.rxp = fgetint(str);
-	sprintf(str, "/sys/class/net/%s/statistics/tx_packets", iface);
-	d.txp = fgetint(str);
-	if (terminate != -1)
-		return d;
 
 	sprintf(str, "/sys/class/net/%s/statistics/rx_bytes", iface);
 	d.rx = fgetint(str);
@@ -309,8 +311,8 @@ struct data getdata(struct data d) {
 	if (terminate != -1)
 		return d;
 
-	d.rxs = (d.rx2 - d.rx) / 1024 / delay;
-	d.txs = (d.tx2 - d.tx) / 1024 / delay;
+	d.rxs = (double) (d.rx2 - d.rx) / 1024 / delay;
+	d.txs = (double) (d.tx2 - d.tx) / 1024 / delay;
 
 	if (d.rxs > d.rxmax)
 		d.rxmax = d.rxs;
@@ -334,9 +336,6 @@ int main(int argc, char *argv[]) {
 	struct data d = {.rxs = 0, .txs = 0};
 	char key;
 
-	resize = false;
-	terminate = -1;
-
 	arg(argc, argv);
 
 	initscr();
@@ -353,6 +352,14 @@ int main(int argc, char *argv[]) {
 		endwin();
 		fprintf(stderr, "memory allocation failed");
 		terminate = 1;
+	}
+
+	if (colors == true && has_colors() != FALSE) {
+		start_color();
+		init_pair(1, COLOR_GREEN, COLOR_BLACK);
+		init_pair(2, COLOR_RED, COLOR_BLACK);
+	} else {
+		colors = false;
 	}
 	
 	signal(SIGINT, sighandler);
@@ -373,7 +380,7 @@ int main(int argc, char *argv[]) {
 		if (terminate != -1)
 			break;
 
-		printstats(d);
+		printgraph(d);
 
 		d = getdata(d);
 
