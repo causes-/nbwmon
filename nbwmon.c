@@ -12,7 +12,6 @@
 char iface[LEN+1] = "wlan0";
 int delay = 1;
 int graphlines = 10;
-int terminate = -1;
 bool colors = true;
 bool resize = false;
 
@@ -37,21 +36,21 @@ int arg(int argc, char *argv[]) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
 				fprintf(stderr, "error: -i needs parameter\n");
 				endwin();
-				exit(1);
+				exit(EXIT_FAILURE);
 			}
 			strncpy(iface, argv[++i], LEN-1);
 		} else if (!strcmp("-d", argv[i])) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
 				fprintf(stderr, "error: -d needs parameter\n");
 				endwin();
-				exit(1);
+				exit(EXIT_FAILURE);
 			}
 			delay = strtol(argv[++i], NULL, 0);
 		} else if (!strcmp("-l", argv[i])) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
 				fprintf(stderr, "error: -l needs parameter\n");
 				endwin();
-				exit(1);
+				exit(EXIT_FAILURE);
 			}
 			graphlines = strtol(argv[++i], NULL, 0);
 		} else if (!strcmp("-n", argv[i])) {
@@ -64,7 +63,7 @@ int arg(int argc, char *argv[]) {
 			fprintf(stderr, "-d <delay> delay\n");
 			fprintf(stderr, "-l <lines> graph height\n");
 			endwin();
-			exit(1);
+			exit(EXIT_FAILURE);
 		}
 	}
 
@@ -78,26 +77,8 @@ void sighandler(int sig) {
 	}
 }
 
-long fgetl(char *file) {
-	char line[LEN+1];
-	FILE *fp;
-
-	if ((fp = fopen(file, "r")) == NULL) {
-		endwin();
-		fprintf(stderr, "cant find network interface: %s\n", iface);
-		fprintf(stderr, "you can select interface with nbwmon -i wlan0\n");
-		terminate = 1;
-		return 0;
-	}
-
-	fgets(line, LEN, fp);
-	fclose(fp);
-
-	return strtol(line, NULL, 0);
-}
-
 struct data scalegraph(struct data d) {
-	int x, y;
+	int i, j;
 	int COLS2 = COLS;
 	double *rxs;
 	double *txs;
@@ -118,17 +99,18 @@ struct data scalegraph(struct data d) {
 	d.txs = calloc(COLS, sizeof(double));
 
 	if (d.rxs == NULL || d.txs == NULL) {
-		endwin();
-		fprintf(stderr, "memory allocation failed");
 		free(rxs);
 		free(txs);
-		terminate = 1;
-		return d;
+		free(d.rxs);
+		free(d.txs);
+		endwin();
+		fprintf(stderr, "memory allocation failed");
+		exit(EXIT_FAILURE);
 	}
 
-	for (x = COLS2-1, y = COLS-1; x >= 0 && y >= 0; x--, y--) {
-		d.rxs[y] = rxs[x];
-		d.txs[y] = txs[x];
+	for (i = COLS-1, j = COLS2-1; i >= 0 && j >= 0; i--, j--) {
+		d.rxs[i] = rxs[j];
+		d.txs[i] = txs[j];
 	}
 
 	free(rxs);
@@ -155,10 +137,7 @@ void printgraph(struct data d) {
 	for (y = graphlines-1; y >= 0; y--) {
 		for (x = 0; x < COLS; x++) {
 			i = d.rxs[x] / d.graphmax * graphlines;
-			if (i > y)
-				addch('*');
-			else
-				addch(' ');
+			i > y ? addch('*') : addch(' ');
 		}
 	}
 	attroff(COLOR_PAIR(1));
@@ -167,10 +146,7 @@ void printgraph(struct data d) {
 	for (y = 0; y <= graphlines-1; y++) {
 		for (x = 0; x < COLS; x++) {
 			i = d.txs[x] / d.graphmax * graphlines;
-			if (i > y)
-				addch('*');
-			else
-				addch(' ');
+			i > y ? addch('*') : addch(' ');
 		}
 	}
 	attroff(COLOR_PAIR(2));
@@ -184,17 +160,36 @@ void printgraph(struct data d) {
 	refresh();
 }
 
+long fgetl(char *file) {
+	char line[LEN+1];
+	FILE *fp;
+
+	if ((fp = fopen(file, "r")) == NULL)
+		return -1;
+
+	fgets(line, LEN, fp);
+	fclose(fp);
+
+	return strtol(line, NULL, 0);
+}
+
 struct data getdata(struct data d) {
 	char str[LEN+1];
 	int i;
-	double rx, tx;
+	long rx, tx;
 
 	sprintf(str, "/sys/class/net/%s/statistics/rx_bytes", iface);
 	rx = fgetl(str);
 	sprintf(str, "/sys/class/net/%s/statistics/tx_bytes", iface);
 	tx = fgetl(str);
-	if (terminate != -1)
-		return d;
+	if (rx == -1 || tx == -1) {
+		free(d.rxs);
+		free(d.txs);
+		endwin();
+		fprintf(stderr, "cant find network interface: %s\n", iface);
+		fprintf(stderr, "you can select interface with: -i <interface>\n");
+		exit(EXIT_FAILURE);
+	}
 
 	sleep(delay);
 
@@ -205,8 +200,6 @@ struct data getdata(struct data d) {
 	d.rx = fgetl(str);
 	sprintf(str, "/sys/class/net/%s/statistics/tx_bytes", iface);
 	d.tx = fgetl(str);
-	if (terminate != -1)
-		return d;
 
 	for (i = 0; i < COLS-1; i++) {
 		d.rxs[i] = d.rxs[i+1];
@@ -247,9 +240,11 @@ int main(int argc, char *argv[]) {
 	d.txs = calloc(COLS, sizeof(double));
 
 	if (d.rxs == NULL || d.txs == NULL) {
+		free(d.rxs);
+		free(d.txs);
 		endwin();
 		fprintf(stderr, "memory allocation failed");
-		terminate = 1;
+		return EXIT_FAILURE;
 	}
 
 	if (colors == true && has_colors() != FALSE) {
@@ -262,10 +257,9 @@ int main(int argc, char *argv[]) {
 	
 	signal(SIGWINCH, sighandler);
 
-	do {
+	while (1) {
 		key = getch();
 		if (key != ERR && tolower(key) == 'q') {
-			terminate = 0;
 			break;
 		}
 
@@ -275,12 +269,12 @@ int main(int argc, char *argv[]) {
 		printgraph(d);
 
 		d = getdata(d);
-	} while (terminate == -1);
+	}
 
 	endwin();
 
 	free(d.rxs);
 	free(d.txs);
 
-	return terminate == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+	return EXIT_SUCCESS;
 }
