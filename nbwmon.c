@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include <signal.h>
 
-#define LEN 100
+#define LEN 256
 
 char iface[LEN+1] = "wlan0";
 int delay = 1;
@@ -118,7 +118,9 @@ void printgraph(struct iface d) {
 	int x, y;
 	double i;
 
-	clear();
+	for (y = 0; y < 3; y++)
+		for (x = 0; x < COLS; x++)
+			mvprintw(y, x, " ");
 
 	mvprintw(0, (COLS/4)-9, "%7s %.2lf KiB/s", "RX:", d.rxs[COLS-1]);
 	mvprintw(0, (COLS/4)-9+(COLS/2), "%7s %.2lf KiB/s", "TX:", d.txs[COLS-1]);
