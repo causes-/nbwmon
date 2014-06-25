@@ -25,7 +25,7 @@ struct iface {
 	double *txs;
 };
 
-int arg(int argc, char *argv[]) {
+void arg(int argc, char *argv[]) {
 	int i;
 
 	for (i = 1; i < argc; i++) {
@@ -63,8 +63,6 @@ int arg(int argc, char *argv[]) {
 			exit(EXIT_FAILURE);
 		}
 	}
-
-	return 0;
 }
 
 void sighandler(int sig) {
@@ -122,12 +120,12 @@ void printgraph(struct iface d) {
 
 	clear();
 
-	mvprintw(0, (COLS/4)-9, "%7s %.2lf KB/s", "RX:", d.rxs[COLS-1]);
-	mvprintw(0, (COLS/4)-9+(COLS/2), "%7s %.2lf KB/s", "TX:", d.txs[COLS-1]);
-	mvprintw(1, (COLS/4)-9, "%7s %.2lf KB/s", "max:", d.rxmax);
-	mvprintw(1, (COLS/4)-9+(COLS/2), "%7s %.2lf KB/s", "max:", d.txmax);
-	mvprintw(2, (COLS/4)-9, "%7s %.2lf MB", "total:", (double) d.rx / 1024000);
-	mvprintw(2, (COLS/4)-9+(COLS/2), "%7s %.2lf MB", "total:", (double) d.tx / 1024000);
+	mvprintw(0, (COLS/4)-9, "%7s %.2lf KiB/s", "RX:", d.rxs[COLS-1]);
+	mvprintw(0, (COLS/4)-9+(COLS/2), "%7s %.2lf KiB/s", "TX:", d.txs[COLS-1]);
+	mvprintw(1, (COLS/4)-9, "%7s %.2lf KiB/s", "max:", d.rxmax);
+	mvprintw(1, (COLS/4)-9+(COLS/2), "%7s %.2lf KiB/s", "max:", d.txmax);
+	mvprintw(2, (COLS/4)-9, "%7s %.2lf MiB", "total:", (double) d.rx / 1024000);
+	mvprintw(2, (COLS/4)-9+(COLS/2), "%7s %.2lf MiB", "total:", (double) d.tx / 1024000);
 	addch('\n');
 
 	attron(COLOR_PAIR(1));
@@ -149,10 +147,10 @@ void printgraph(struct iface d) {
 	attroff(COLOR_PAIR(2));
 	addch('\n');
 
-	mvprintw(3, 0, "%.2lf KB/s", d.graphmax);
-	mvprintw(graphlines+2, 0, "0.00 KB/s");
-	mvprintw(graphlines+3, 0, "0.00 KB/s");
-	mvprintw(graphlines*2+2, 0, "%.2lf KB/s", d.graphmax);
+	mvprintw(3, 0, "%.2lf KiB/s", d.graphmax);
+	mvprintw(graphlines+2, 0, "0.00 KiB/s");
+	mvprintw(graphlines+3, 0, "0.00 KiB/s");
+	mvprintw(graphlines*2+2, 0, "%.2lf KiB/s", d.graphmax);
 
 	refresh();
 }
@@ -190,7 +188,7 @@ struct iface getdata(struct iface d) {
 
 	sleep(delay);
 
-	if (resize == true)
+	if (resize)
 		return d;
 
 	sprintf(file, "/sys/class/net/%s/statistics/rx_bytes", iface);
@@ -252,7 +250,7 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	}
 
-	if (colors == true && has_colors() != FALSE) {
+	if (colors && has_colors() != FALSE) {
 		start_color();
 		init_pair(1, COLOR_GREEN, COLOR_BLACK);
 		init_pair(2, COLOR_RED, COLOR_BLACK);
@@ -267,7 +265,7 @@ int main(int argc, char *argv[]) {
 		if (key != ERR && tolower(key) == 'q')
 			break;
 
-		if (resize == true)
+		if (resize)
 			d = scalegraph(d);
 
 		printgraph(d);
