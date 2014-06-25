@@ -15,15 +15,12 @@ int graphlines = 10;
 bool colors = true;
 bool resize = false;
 
-struct data {
-	// total traffic
+struct iface {
 	long rx;
 	long tx;
-	// max KB/s
 	double rxmax;
 	double txmax;
 	double graphmax;
-	// graph KB/s
 	double *rxs;
 	double *txs;
 };
@@ -77,7 +74,7 @@ void sighandler(int sig) {
 	}
 }
 
-struct data scalegraph(struct data d) {
+struct iface scalegraph(struct iface d) {
 	int i, j;
 	int COLS2 = COLS;
 	double *rxs;
@@ -104,7 +101,7 @@ struct data scalegraph(struct data d) {
 		free(d.rxs);
 		free(d.txs);
 		endwin();
-		fprintf(stderr, "memory allocation failed");
+		fprintf(stderr, "memory allocation failed\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -119,7 +116,7 @@ struct data scalegraph(struct data d) {
 	return d;
 }
 
-void printgraph(struct data d) {
+void printgraph(struct iface d) {
 	int x, y;
 	double i;
 
@@ -173,15 +170,15 @@ long fgetl(char *file) {
 	return strtol(line, NULL, 0);
 }
 
-struct data getdata(struct data d) {
-	char str[LEN+1];
+struct iface getdata(struct iface d) {
+	char file[LEN+1];
 	int i;
 	long rx, tx;
 
-	sprintf(str, "/sys/class/net/%s/statistics/rx_bytes", iface);
-	rx = fgetl(str);
-	sprintf(str, "/sys/class/net/%s/statistics/tx_bytes", iface);
-	tx = fgetl(str);
+	sprintf(file, "/sys/class/net/%s/statistics/rx_bytes", iface);
+	rx = fgetl(file);
+	sprintf(file, "/sys/class/net/%s/statistics/tx_bytes", iface);
+	tx = fgetl(file);
 	if (rx == -1 || tx == -1) {
 		free(d.rxs);
 		free(d.txs);
@@ -196,10 +193,18 @@ struct data getdata(struct data d) {
 	if (resize == true)
 		return d;
 
-	sprintf(str, "/sys/class/net/%s/statistics/rx_bytes", iface);
-	d.rx = fgetl(str);
-	sprintf(str, "/sys/class/net/%s/statistics/tx_bytes", iface);
-	d.tx = fgetl(str);
+	sprintf(file, "/sys/class/net/%s/statistics/rx_bytes", iface);
+	d.rx = fgetl(file);
+	sprintf(file, "/sys/class/net/%s/statistics/tx_bytes", iface);
+	d.tx = fgetl(file);
+	if (rx == -1 || tx == -1) {
+		free(d.rxs);
+		free(d.txs);
+		endwin();
+		fprintf(stderr, "cant find network interface: %s\n", iface);
+		fprintf(stderr, "you can select interface with: -i <interface>\n");
+		exit(EXIT_FAILURE);
+	}
 
 	for (i = 0; i < COLS-1; i++) {
 		d.rxs[i] = d.rxs[i+1];
@@ -209,11 +214,6 @@ struct data getdata(struct data d) {
 	d.rxs[COLS-1] = (double) (d.rx - rx) / 1024 / delay;
 	d.txs[COLS-1] = (double) (d.tx - tx) / 1024 / delay;
 
-	if (d.rxs[COLS-1] > d.rxmax)
-		d.rxmax = d.rxs[COLS-1];
-	if (d.txs[COLS-1] > d.txmax)
-		d.txmax = d.txs[COLS-1];
-
 	d.graphmax = 0;
 	for (i = 0; i < COLS; i++) {
 		if (d.rxs[i] > d.graphmax)
@@ -222,11 +222,16 @@ struct data getdata(struct data d) {
 			d.graphmax = d.txs[i];
 	}
 
+	if (d.rxs[COLS-1] > d.rxmax)
+		d.rxmax = d.rxs[COLS-1];
+	if (d.txs[COLS-1] > d.txmax)
+		d.txmax = d.txs[COLS-1];
+
 	return d;
 }
 
 int main(int argc, char *argv[]) {
-	struct data d = {.rx = 0, .tx = 0, .rxmax = 0, .txmax = 0, .graphmax = 0};
+	struct iface d = {.rx = 0, .tx = 0, .rxmax = 0, .txmax = 0, .graphmax = 0};
 	char key;
 
 	arg(argc, argv);
@@ -243,7 +248,7 @@ int main(int argc, char *argv[]) {
 		free(d.rxs);
 		free(d.txs);
 		endwin();
-		fprintf(stderr, "memory allocation failed");
+		fprintf(stderr, "memory allocation failed\n");
 		return EXIT_FAILURE;
 	}
 
@@ -259,22 +264,18 @@ int main(int argc, char *argv[]) {
 
 	while (1) {
 		key = getch();
-		if (key != ERR && tolower(key) == 'q') {
+		if (key != ERR && tolower(key) == 'q')
 			break;
-		}
 
 		if (resize == true)
 			d = scalegraph(d);
 
 		printgraph(d);
-
 		d = getdata(d);
 	}
 
-	endwin();
-
 	free(d.rxs);
 	free(d.txs);
-
+	endwin();
 	return EXIT_SUCCESS;
 }
