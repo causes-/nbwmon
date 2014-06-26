@@ -1,12 +1,12 @@
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
 #include <ctype.h>
-#include <ncurses.h>
 #include <unistd.h>
 #include <signal.h>
 #include <dirent.h>
+#include <ncurses.h>
 
 #define LEN 256
 
@@ -26,6 +26,13 @@ struct iface {
 	double *txs;
 };
 
+void sighandler(int sig) {
+	if (sig == SIGWINCH) {
+		resize = true;
+		signal(SIGWINCH, sighandler);
+	}
+}
+
 void arg(int argc, char *argv[]) {
 	int i;
 
@@ -43,7 +50,7 @@ void arg(int argc, char *argv[]) {
 			}
 			delay = strtol(argv[++i], NULL, 0);
 			if (delay < 1) {
-				fprintf(stderr, "error: delay under 1 sec not supported for now\n");
+				fprintf(stderr, "error: minimum delay 1 sec\n");
 				exit(EXIT_FAILURE);
 			}
 		} else if (!strcmp("-l", argv[i])) {
@@ -66,26 +73,16 @@ void arg(int argc, char *argv[]) {
 	}
 }
 
-void sighandler(int sig) {
-	if (sig == SIGWINCH) {
-		resize = true;
-		signal(SIGWINCH, sighandler);
-	}
-}
-
-void ifup (void) {
-	FILE *fp;
+void ifaceup (void) {
 	char file[LEN+1];
 	char line[LEN+1];
+	FILE *fp;
 	DIR *d;
 	struct dirent *dir;
-	d = opendir("/sys/class/net");
-	if (d) {
-		while ((dir = readdir(d)) != NULL) {
-			if (dir->d_name[0] == '.')
-				continue;
 
-			if (!strcmp("lo", dir->d_name))
+	if ((d = opendir("/sys/class/net")) != NULL) {
+		while ((dir = readdir(d)) != NULL) {
+			if (dir->d_name[0] == '.' || !strcmp("lo", dir->d_name))
 				continue;
 
 			sprintf(file, "/sys/class/net/%s/operstate", dir->d_name);
@@ -157,12 +154,35 @@ void printgraph(struct iface d) {
 		for (x = 0; x < COLS; x++)
 			mvprintw(y, x, " ");
 
-	mvprintw(0, (COLS/4)-9, "%7s %.2lf KiB/s", "RX:", d.rxs[COLS-1]);
-	mvprintw(0, (COLS/4)-9+(COLS/2), "%7s %.2lf KiB/s", "TX:", d.txs[COLS-1]);
-	mvprintw(1, (COLS/4)-9, "%7s %.2lf KiB/s", "max:", d.rxmax);
-	mvprintw(1, (COLS/4)-9+(COLS/2), "%7s %.2lf KiB/s", "max:", d.txmax);
-	mvprintw(2, (COLS/4)-9, "%7s %.2lf MiB", "total:", (double) d.rx / 1024000);
-	mvprintw(2, (COLS/4)-9+(COLS/2), "%7s %.2lf MiB", "total:", (double) d.tx / 1024000);
+	if (d.rxs[COLS-1] > 1024 || d.txs[COLS-1] > 1024) {
+		mvprintw(0, (COLS/4)-9, "%7s %.2lf MiB/s", "RX:", d.rxs[COLS-1] / 1024);
+		mvprintw(0, (COLS/4)-9+(COLS/2), "%7s %.2lf MiB/s", "TX:",
+				d.txs[COLS-1] / 1024);
+	} else {
+		mvprintw(0, (COLS/4)-9, "%7s %.2lf KiB/s", "RX:", d.rxs[COLS-1]);
+		mvprintw(0, (COLS/4)-9+(COLS/2), "%7s %.2lf KiB/s", "TX:", d.txs[COLS-1]);
+	}
+
+	if (d.rxmax > 1024 || d.txmax > 1024) {
+		mvprintw(1, (COLS/4)-9, "%7s %.2lf MiB/s", "max:", d.rxmax / 1024);
+		mvprintw(1, (COLS/4)-9+(COLS/2), "%7s %.2lf MiB/s", "max:", d.txmax / 1024);
+	} else {
+		mvprintw(1, (COLS/4)-9, "%7s %.2lf KiB/s", "max:", d.rxmax);
+		mvprintw(1, (COLS/4)-9+(COLS/2), "%7s %.2lf KiB/s", "max:", d.txmax);
+	}
+
+	if (d.rx / 1024 / 1024 > 1024 || d.tx / 1024 / 1024 > 1024) {
+		mvprintw(2, (COLS/4)-9, "%7s %.2lf GiB", "total:",
+				(double) d.rx / 1024 / 1024 / 1024);
+		mvprintw(2, (COLS/4)-9+(COLS/2), "%7s %.2lf GiB", "total:",
+				(double) d.tx / 1024 / 1024 / 1024);
+	} else {
+		mvprintw(2, (COLS/4)-9, "%7s %.2lf MiB", "total:",
+				(double) d.rx / 1024 / 1024);
+		mvprintw(2, (COLS/4)-9+(COLS/2), "%7s %.2lf MiB", "total:",
+				(double) d.tx / 1024 / 1024);
+	}
+
 	addch('\n');
 
 	attron(COLOR_PAIR(1));
@@ -182,12 +202,20 @@ void printgraph(struct iface d) {
 		}
 	}
 	attroff(COLOR_PAIR(2));
+
 	addch('\n');
 
-	mvprintw(3, 0, "%.2lf KiB/s", d.graphmax);
-	mvprintw(graphlines+2, 0, "0.00 KiB/s");
-	mvprintw(graphlines+3, 0, "0.00 KiB/s");
-	mvprintw(graphlines*2+2, 0, "%.2lf KiB/s", d.graphmax);
+	if (d.graphmax > 1024) {
+		mvprintw(3, 0, "%.2lf MiB/s", d.graphmax / 1024);
+		mvprintw(graphlines+2, 0, "0.00 MiB/s");
+		mvprintw(graphlines+3, 0, "0.00 MiB/s");
+		mvprintw(graphlines*2+2, 0, "%.2lf MiB/s", d.graphmax / 1024);
+	} else {
+		mvprintw(3, 0, "%.2lf KiB/s", d.graphmax);
+		mvprintw(graphlines+2, 0, "0.00 KiB/s");
+		mvprintw(graphlines+3, 0, "0.00 KiB/s");
+		mvprintw(graphlines*2+2, 0, "%.2lf KiB/s", d.graphmax);
+	}
 
 	mvprintw(graphlines*2+3, COLS/2-9, "interface: %s", iface);
 
@@ -224,7 +252,7 @@ struct iface getdata(struct iface d) {
 		free(d.rxs);
 		free(d.txs);
 		endwin();
-		fprintf(stderr, "cant find network interface: %s\n", iface);
+		fprintf(stderr, "cant find network interface %s\n", iface);
 		fprintf(stderr, "you can select interface with: -i <interface>\n");
 		exit(EXIT_FAILURE);
 	}
@@ -242,7 +270,7 @@ struct iface getdata(struct iface d) {
 		free(d.rxs);
 		free(d.txs);
 		endwin();
-		fprintf(stderr, "cant find network interface: %s\n", iface);
+		fprintf(stderr, "cant find network interface %s\n", iface);
 		fprintf(stderr, "you can select interface with: -i <interface>\n");
 		exit(EXIT_FAILURE);
 	}
@@ -278,7 +306,7 @@ int main(int argc, char *argv[]) {
 	arg(argc, argv);
 
 	if (iface[0] == '\0')
-		ifup();
+		ifaceup();
 
 	initscr();
 	curs_set(0);
