@@ -92,14 +92,16 @@ void ifup (void) {
 			if ((fp = fopen(file, "r")) == NULL)
 				continue;
 
-			fgets(line, 256, fp);
+			if (fgets(line, 256, fp)) {
+				strtok(line, "\n");
 
-			// ppp0 shows UNKNOWN but only appears when connected
-			if (!strcmp("ppp0", dir->d_name))
-				strncpy(iface, dir->d_name, LEN);
+				// ppp0 shows UNKNOWN but only appears when connected
+				if (!strcmp("ppp0", dir->d_name))
+					strncpy(iface, dir->d_name, LEN);
 
-			if (!strcmp("up", line))
-				strncpy(iface, dir->d_name, LEN);
+				if (!strcmp("up", line))
+					strncpy(iface, dir->d_name, LEN);
+			}
 			fclose(fp);
 		}
 	}
@@ -199,8 +201,10 @@ long fgetl(char *file) {
 	if ((fp = fopen(file, "r")) == NULL)
 		return -1;
 
-	if (fgets(line, LEN, fp) == NULL)
+	if (fgets(line, LEN, fp) == NULL) {
+		fclose(fp);
 		return -1;
+	}
 
 	fclose(fp);
 
@@ -294,12 +298,13 @@ int main(int argc, char *argv[]) {
 
 	if (colors && has_colors() != FALSE) {
 		start_color();
-		init_pair(1, COLOR_GREEN, COLOR_BLACK);
-		init_pair(2, COLOR_RED, COLOR_BLACK);
+		use_default_colors();
+		init_pair(1, COLOR_GREEN, -1);
+		init_pair(2, COLOR_RED, -1);
 	} else {
 		colors = false;
 	}
-	
+
 	signal(SIGWINCH, sighandler);
 
 	while (1) {

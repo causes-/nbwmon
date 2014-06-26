@@ -10,7 +10,7 @@ features
 print bandwidth graph
 print bandwidth, peak and traffic
 scale to full window on start and resize
-automatic active interface detection
+detect active network interface
 support for colors
 
 usage
