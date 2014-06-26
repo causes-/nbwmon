@@ -6,10 +6,11 @@
 #include <ncurses.h>
 #include <unistd.h>
 #include <signal.h>
+#include <dirent.h>
 
 #define LEN 256
 
-char iface[LEN+1] = "wlan0";
+char iface[LEN+1] = "";
 int delay = 1;
 int graphlines = 10;
 bool colors = true;
@@ -32,21 +33,22 @@ void arg(int argc, char *argv[]) {
 		if (!strcmp("-i", argv[i])) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
 				fprintf(stderr, "error: -i needs parameter\n");
-				endwin();
 				exit(EXIT_FAILURE);
 			}
 			strncpy(iface, argv[++i], LEN-1);
 		} else if (!strcmp("-d", argv[i])) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
 				fprintf(stderr, "error: -d needs parameter\n");
-				endwin();
 				exit(EXIT_FAILURE);
 			}
 			delay = strtol(argv[++i], NULL, 0);
+			if (delay < 1) {
+				fprintf(stderr, "error: delay under 1 sec not supported for now\n");
+				exit(EXIT_FAILURE);
+			}
 		} else if (!strcmp("-l", argv[i])) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
 				fprintf(stderr, "error: -l needs parameter\n");
-				endwin();
 				exit(EXIT_FAILURE);
 			}
 			graphlines = strtol(argv[++i], NULL, 0);
@@ -59,7 +61,6 @@ void arg(int argc, char *argv[]) {
 			fprintf(stderr, "-i <iface> interface\n");
 			fprintf(stderr, "-d <delay> delay\n");
 			fprintf(stderr, "-l <lines> graph height\n");
-			endwin();
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -69,6 +70,38 @@ void sighandler(int sig) {
 	if (sig == SIGWINCH) {
 		resize = true;
 		signal(SIGWINCH, sighandler);
+	}
+}
+
+void ifup (void) {
+	FILE *fp;
+	char file[LEN+1];
+	char line[LEN+1];
+	DIR *d;
+	struct dirent *dir;
+	d = opendir("/sys/class/net");
+	if (d) {
+		while ((dir = readdir(d)) != NULL) {
+			if (dir->d_name[0] == '.')
+				continue;
+
+			if (!strcmp("lo", dir->d_name))
+				continue;
+
+			sprintf(file, "/sys/class/net/%s/operstate", dir->d_name);
+			if ((fp = fopen(file, "r")) == NULL)
+				continue;
+
+			fgets(line, 256, fp);
+
+			// ppp0 shows UNKNOWN but only appears when connected
+			if (!strcmp("ppp0", dir->d_name))
+				strncpy(iface, dir->d_name, LEN);
+
+			if (!strcmp("up", line))
+				strncpy(iface, dir->d_name, LEN);
+			fclose(fp);
+		}
 	}
 }
 
@@ -154,6 +187,8 @@ void printgraph(struct iface d) {
 	mvprintw(graphlines+3, 0, "0.00 KiB/s");
 	mvprintw(graphlines*2+2, 0, "%.2lf KiB/s", d.graphmax);
 
+	mvprintw(graphlines*2+3, COLS/2-9, "interface: %s", iface);
+
 	refresh();
 }
 
@@ -164,7 +199,9 @@ long fgetl(char *file) {
 	if ((fp = fopen(file, "r")) == NULL)
 		return -1;
 
-	fgets(line, LEN, fp);
+	if (fgets(line, LEN, fp) == NULL)
+		return -1;
+
 	fclose(fp);
 
 	return strtol(line, NULL, 0);
@@ -235,6 +272,9 @@ int main(int argc, char *argv[]) {
 	char key;
 
 	arg(argc, argv);
+
+	if (iface[0] == '\0')
+		ifup();
 
 	initscr();
 	curs_set(0);
