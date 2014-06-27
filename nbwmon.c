@@ -153,39 +153,7 @@ void printgraph(struct iface d) {
 	int x, y;
 	double i;
 
-	for (y = 0; y < 3; y++)
-		for (x = 0; x < COLS; x++)
-			mvprintw(y, x, " ");
-
-	if (d.rxs[COLS-1] > 1024 || d.txs[COLS-1] > 1024) {
-		mvprintw(0, (COLS/4)-9, "%7s %.2lf MiB/s", "RX:", d.rxs[COLS-1] / 1024);
-		mvprintw(0, (COLS/4)-9+(COLS/2), "%7s %.2lf MiB/s", "TX:",
-				d.txs[COLS-1] / 1024);
-	} else {
-		mvprintw(0, (COLS/4)-9, "%7s %.2lf KiB/s", "RX:", d.rxs[COLS-1]);
-		mvprintw(0, (COLS/4)-9+(COLS/2), "%7s %.2lf KiB/s", "TX:", d.txs[COLS-1]);
-	}
-
-	if (d.rxmax > 1024 || d.txmax > 1024) {
-		mvprintw(1, (COLS/4)-9, "%7s %.2lf MiB/s", "max:", d.rxmax / 1024);
-		mvprintw(1, (COLS/4)-9+(COLS/2), "%7s %.2lf MiB/s", "max:", d.txmax / 1024);
-	} else {
-		mvprintw(1, (COLS/4)-9, "%7s %.2lf KiB/s", "max:", d.rxmax);
-		mvprintw(1, (COLS/4)-9+(COLS/2), "%7s %.2lf KiB/s", "max:", d.txmax);
-	}
-
-	if (d.rx / 1024 / 1024 > 1024 || d.tx / 1024 / 1024 > 1024) {
-		mvprintw(2, (COLS/4)-9, "%7s %.2lf GiB", "total:",
-				(double) d.rx / 1024 / 1024 / 1024);
-		mvprintw(2, (COLS/4)-9+(COLS/2), "%7s %.2lf GiB", "total:",
-				(double) d.tx / 1024 / 1024 / 1024);
-	} else {
-		mvprintw(2, (COLS/4)-9, "%7s %.2lf MiB", "total:",
-				(double) d.rx / 1024 / 1024);
-		mvprintw(2, (COLS/4)-9+(COLS/2), "%7s %.2lf MiB", "total:",
-				(double) d.tx / 1024 / 1024);
-	}
-
+	mvprintw(0, COLS/2-7, "interface: %s", iface);
 	addch('\n');
 
 	attron(COLOR_PAIR(1));
@@ -205,22 +173,48 @@ void printgraph(struct iface d) {
 		}
 	}
 	attroff(COLOR_PAIR(2));
-
 	addch('\n');
 
-	if (d.graphmax > 1024) {
-		mvprintw(3, 0, "%.2lf MiB/s", d.graphmax / 1024);
-		mvprintw(graphlines+2, 0, "0.00 MiB/s");
-		mvprintw(graphlines+3, 0, "0.00 MiB/s");
-		mvprintw(graphlines*2+2, 0, "%.2lf MiB/s", d.graphmax / 1024);
+	if (d.graphmax > 1024.0) {
+		mvprintw(1, 0, "%.2lf MiB/s", d.graphmax / 1024.0);
+		mvprintw(graphlines, 0, "0.00 MiB/s");
+		mvprintw(graphlines+1, 0, "0.00 MiB/s");
+		mvprintw(graphlines*2-1, 0, "%.2lf MiB/s", d.graphmax / 1024.0);
 	} else {
-		mvprintw(3, 0, "%.2lf KiB/s", d.graphmax);
-		mvprintw(graphlines+2, 0, "0.00 KiB/s");
-		mvprintw(graphlines+3, 0, "0.00 KiB/s");
-		mvprintw(graphlines*2+2, 0, "%.2lf KiB/s", d.graphmax);
+		mvprintw(1, 0, "%.2lf KiB/s", d.graphmax);
+		mvprintw(graphlines, 0, "0.00 KiB/s");
+		mvprintw(graphlines+1, 0, "0.00 KiB/s");
+		mvprintw(graphlines*2-1, 0, "%.2lf KiB/s", d.graphmax);
 	}
 
-	mvprintw(graphlines*2+3, COLS/2-9, "interface: %s", iface);
+	for (y = graphlines*2; y < graphlines*2+2; y++)
+		for (x = 0; x < COLS; x++)
+			mvprintw(y, x, " ");
+
+	if (d.rxs[COLS-1] > 1024.0 || d.txs[COLS-1] > 1024.0) {
+		mvprintw(graphlines*2, (COLS/4)-9, "%7s %.2lf MiB/s", "RX:", d.rxs[COLS-1] / 1024.0);
+		mvprintw(graphlines*2, (COLS/4)-9+(COLS/2), "%7s %.2lf MiB/s", "TX:", d.txs[COLS-1] / 1024.0);
+	} else {
+		mvprintw(graphlines*2, (COLS/4)-9, "%7s %.2lf KiB/s", "RX:", d.rxs[COLS-1]);
+		mvprintw(graphlines*2, (COLS/4)-9+(COLS/2), "%7s %.2lf KiB/s", "TX:", d.txs[COLS-1]);
+	}
+
+	if (d.rxmax > 1024.0 || d.txmax > 1024.0) {
+		mvprintw(graphlines*2+1, (COLS/4)-9, "%7s %.2lf MiB/s", "max:", d.rxmax / 1024.0);
+		mvprintw(graphlines*2+1, (COLS/4)-9+(COLS/2), "%7s %.2lf MiB/s", "max:", d.txmax / 1024.0);
+	} else {
+		mvprintw(graphlines*2+1, (COLS/4)-9, "%7s %.2lf KiB/s", "max:", d.rxmax);
+		mvprintw(graphlines*2+1, (COLS/4)-9+(COLS/2), "%7s %.2lf KiB/s", "max:", d.txmax);
+	}
+
+	if (d.rx / 1024.0 / 1024.0 > 1024.0 || d.tx / 1024.0 / 1024.0 > 1024.0) {
+		mvprintw(graphlines*2+2, (COLS/4)-9, "%7s %.2lf GiB", "total:", d.rx / 1024.0 / 1024.0 / 1024.0);
+		mvprintw(graphlines*2+2, (COLS/4)-9+(COLS/2), "%7s %.2lf GiB", "total:", d.tx / 1024.0 / 1024.0 / 1024.0);
+	} else {
+		mvprintw(graphlines*2+2, (COLS/4)-9, "%7s %.2lf MiB", "total:", d.rx / 1024.0 / 1024.0);
+		mvprintw(graphlines*2+2, (COLS/4)-9+(COLS/2), "%7s %.2lf MiB", "total:", d.tx / 1024.0 / 1024.0);
+	}
+	addch('\n');
 
 	refresh();
 }
@@ -282,8 +276,8 @@ struct iface getdata(struct iface d) {
 		d.txs[i] = d.txs[i+1];
 	}
 
-	d.rxs[COLS-1] = (double) (d.rx - rx) / 1024 / delay;
-	d.txs[COLS-1] = (double) (d.tx - tx) / 1024 / delay;
+	d.rxs[COLS-1] = (d.rx - rx) / 1024.0 / delay;
+	d.txs[COLS-1] = (d.tx - tx) / 1024.0 / delay;
 
 	d.graphmax = 0;
 	for (i = 0; i < COLS; i++) {
