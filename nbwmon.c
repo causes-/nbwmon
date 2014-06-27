@@ -1,6 +1,5 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdbool.h>
 #include <string.h>
 #include <ctype.h>
 #include <unistd.h>
@@ -13,8 +12,8 @@
 char iface[LEN+1] = "";
 int delay = 1;
 int graphlines = 10;
-bool colors = true;
-bool resize = false;
+int colors = 1;
+int resize = 1;
 
 struct iface {
 	long rx;
@@ -28,7 +27,7 @@ struct iface {
 
 void sighandler(int sig) {
 	if (sig == SIGWINCH) {
-		resize = true;
+		resize = 1;
 		signal(SIGWINCH, sighandler);
 	}
 }
@@ -50,7 +49,7 @@ void arg(int argc, char *argv[]) {
 			}
 			delay = strtol(argv[++i], NULL, 0);
 			if (delay < 1) {
-				fprintf(stderr, "error: minimum delay 1 sec\n");
+				fprintf(stderr, "error: minimum delay: 1\n");
 				exit(EXIT_FAILURE);
 			}
 		} else if (!strcmp("-l", argv[i])) {
@@ -59,15 +58,19 @@ void arg(int argc, char *argv[]) {
 				exit(EXIT_FAILURE);
 			}
 			graphlines = strtol(argv[++i], NULL, 0);
+			if (graphlines < 3) {
+				fprintf(stderr, "error: minimum graphlines: 3");
+				exit(EXIT_FAILURE);
+			}
 		} else if (!strcmp("-n", argv[i])) {
-			colors = false;
+			colors = 0;
 		} else {
 			fprintf(stderr, "usage: %s [options]\n", argv[0]);
-			fprintf(stderr, "-h         help\n");
-			fprintf(stderr, "-n         no colors\n");
-			fprintf(stderr, "-i <iface> interface\n");
-			fprintf(stderr, "-d <delay> delay\n");
-			fprintf(stderr, "-l <lines> graph height\n");
+			fprintf(stderr, "-h           help\n");
+			fprintf(stderr, "-n           no colors\n");
+			fprintf(stderr, "-i <iface>   interface\n");
+			fprintf(stderr, "-d <seconds> delay\n");
+			fprintf(stderr, "-l <lines>   graph height\n");
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -110,7 +113,7 @@ struct iface scalegraph(struct iface d) {
 	double *rxs;
 	double *txs;
 
-	resize = false;
+	resize = 0;
 
 	endwin();
 	refresh();
@@ -258,7 +261,6 @@ struct iface getdata(struct iface d) {
 	}
 
 	sleep(delay);
-
 	if (resize)
 		return d;
 
@@ -313,6 +315,13 @@ int main(int argc, char *argv[]) {
 	noecho();
 	nodelay(stdscr, TRUE);
 
+	if (colors && has_colors()) {
+		start_color();
+		use_default_colors();
+		init_pair(1, COLOR_GREEN, -1);
+		init_pair(2, COLOR_RED, -1);
+	}
+
 	d.rxs = calloc(COLS, sizeof(double));
 	d.txs = calloc(COLS, sizeof(double));
 
@@ -322,15 +331,6 @@ int main(int argc, char *argv[]) {
 		endwin();
 		fprintf(stderr, "memory allocation failed\n");
 		return EXIT_FAILURE;
-	}
-
-	if (colors && has_colors() != FALSE) {
-		start_color();
-		use_default_colors();
-		init_pair(1, COLOR_GREEN, -1);
-		init_pair(2, COLOR_RED, -1);
-	} else {
-		colors = false;
 	}
 
 	signal(SIGWINCH, sighandler);

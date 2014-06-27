@@ -1,8 +1,8 @@
-CFLAGS+=-std=c99 -Wall -Wextra -pedantic -lncurses
+CFLAGS+=-std=c99 -Wall -pedantic -lncurses
 
 all: nbwmon
 
-install: nbwmon
+install: all
 	mkdir -p ${DESTDIR}/usr/bin
 	install -m 755 nbwmon ${DESTDIR}/usr/bin/
 
