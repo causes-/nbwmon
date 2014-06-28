@@ -17,9 +17,9 @@ support for colors
 usage
 -----
 usage: ./nbwmon [options]
--h           help
--s           use SI units (kB/s)
--n           no colors
--i <iface>   interface
--d <seconds> delay
--l <lines>   graph height
+-h             help
+-s             use SI units
+-n             no colors
+-i <interface> network interface
+-d <seconds>   delay
+-l <lines>     graph height

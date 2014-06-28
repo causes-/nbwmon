@@ -5,13 +5,13 @@
 #include <unistd.h>
 #include <signal.h>
 #include <dirent.h>
+#include <sys/socket.h>
+#include <linux/if.h>
+#include <linux/limits.h>
 #include <ncurses.h>
 
-#define IFNAMSIZ 16
-#define PATH_MAX 4096
-
 char iface[IFNAMSIZ];
-int unit = 0;
+int si = 0;
 int delay = 1;
 int graphlines = 10;
 int colors = 1;
@@ -39,47 +39,46 @@ void arg(int argc, char *argv[]) {
 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp("-s", argv[i])) {
-			unit = 1;
+			si = 1;
 		} else if (!strcmp("-n", argv[i])) {
 			colors = 0;
 		} else if (!strcmp("-i", argv[i])) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
-				fprintf(stderr, "error: -i needs parameter\n");
+				fprintf(stderr, "-i needs parameter\n");
 				exit(EXIT_FAILURE);
-			}
-			if (strlen(argv[i+1]) > IFNAMSIZ-1) {
-				fprintf(stderr, "error: maximum interface length: %d\n", IFNAMSIZ-1);
+			} else if (strlen(argv[i+1]) > IFNAMSIZ-1) {
+				fprintf(stderr, "maximum interface length: %d\n", IFNAMSIZ-1);
 				exit(EXIT_FAILURE);
 			}
 			strncpy(iface, argv[++i], IFNAMSIZ-1);
 		} else if (!strcmp("-d", argv[i])) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
-				fprintf(stderr, "error: -d needs parameter\n");
+				fprintf(stderr, "-d needs parameter\n");
 				exit(EXIT_FAILURE);
 			}
 			delay = strtol(argv[++i], NULL, 0);
 			if (delay < 1) {
-				fprintf(stderr, "error: minimum delay: 1\n");
+				fprintf(stderr, "minimum delay: 1\n");
 				exit(EXIT_FAILURE);
 			}
 		} else if (!strcmp("-l", argv[i])) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
-				fprintf(stderr, "error: -l needs parameter\n");
+				fprintf(stderr, "-l needs parameter\n");
 				exit(EXIT_FAILURE);
 			}
 			graphlines = strtol(argv[++i], NULL, 0);
 			if (graphlines < 3) {
-				fprintf(stderr, "error: minimum graphlines: 3");
+				fprintf(stderr, "minimum graphlines: 3");
 				exit(EXIT_FAILURE);
 			}
 		} else {
 			fprintf(stderr, "usage: %s [options]\n", argv[0]);
-			fprintf(stderr, "-h           help\n");
-			fprintf(stderr, "-s           use SI units (kB/s)\n");
-			fprintf(stderr, "-n           no colors\n");
-			fprintf(stderr, "-i <iface>   interface\n");
-			fprintf(stderr, "-d <seconds> delay\n");
-			fprintf(stderr, "-l <lines>   graph height\n");
+			fprintf(stderr, "-h             help\n");
+			fprintf(stderr, "-s             use SI units\n");
+			fprintf(stderr, "-n             no colors\n");
+			fprintf(stderr, "-i <interface> network interface\n");
+			fprintf(stderr, "-d <seconds>   delay\n");
+			fprintf(stderr, "-l <lines>     graph height\n");
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -160,7 +159,7 @@ struct iface scalegraph(struct iface d) {
 }
 
 void printgraph(struct iface d, double prefix, char unit[3][4]) {
-	int x, y;
+	int y, x;
 	double i;
 
 	mvprintw(0, COLS/2-7, "interface: %s", iface);
@@ -192,8 +191,8 @@ void printgraph(struct iface d, double prefix, char unit[3][4]) {
 
 	if (d.graphmax > prefix) {
 		mvprintw(1, 0, "%.2lf %s/s", d.graphmax / prefix, unit[1]);
-		mvprintw(graphlines, 0, "0.00 %s/s", unit[0]);
-		mvprintw(graphlines+1, 0, "0.00 %s/s", unit[0]);
+		mvprintw(graphlines, 0, "0.00 %s/s", unit[1]);
+		mvprintw(graphlines+1, 0, "0.00 %s/s", unit[1]);
 		mvprintw(graphlines*2, 0, "%.2lf %s/s", d.graphmax / prefix, unit[1]);
 	} else {
 		mvprintw(1, 0, "%.2lf %s/s", d.graphmax, unit[0]);
@@ -264,7 +263,7 @@ struct iface getdata(struct iface d, double prefix) {
 		free(d.rxs);
 		free(d.txs);
 		endwin();
-		fprintf(stderr, "cant find network interface %s\n", iface);
+		fprintf(stderr, "cant find network interface: %s\n", iface);
 		fprintf(stderr, "you can select interface with: -i <interface>\n");
 		exit(EXIT_FAILURE);
 	}
@@ -281,7 +280,7 @@ struct iface getdata(struct iface d, double prefix) {
 		free(d.rxs);
 		free(d.txs);
 		endwin();
-		fprintf(stderr, "cant find network interface %s\n", iface);
+		fprintf(stderr, "cant find network interface: %s\n", iface);
 		fprintf(stderr, "you can select interface with: -i <interface>\n");
 		exit(EXIT_FAILURE);
 	}
@@ -311,19 +310,19 @@ struct iface getdata(struct iface d, double prefix) {
 }
 
 int main(int argc, char *argv[]) {
-	int prefix;
+	double prefix;
 	char key;
 	char units[2][3][4] = {{ "KiB", "MiB", "GiB" }, { "kB", "MB", "GB" }};
 	struct iface d = {.rx = 0, .tx = 0, .rxmax = 0, .txmax = 0, .graphmax = 0};
 
-	strncpy(iface, "", IFNAMSIZ);
+	strncpy(iface, "", IFNAMSIZ-1);
 
 	arg(argc, argv);
 
 	if (iface[0] == '\0')
 		ifaceup();
 
-	prefix = unit ? 1000.0 : 1024.0;
+	prefix = si ? 1000.0 : 1024.0;
 
 	initscr();
 	curs_set(0);
@@ -357,7 +356,7 @@ int main(int argc, char *argv[]) {
 		if (resize)
 			d = scalegraph(d);
 
-		printgraph(d, prefix, units[unit]);
+		printgraph(d, prefix, units[si]);
 
 		d = getdata(d, prefix);
 	}
