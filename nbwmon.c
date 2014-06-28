@@ -7,9 +7,11 @@
 #include <dirent.h>
 #include <ncurses.h>
 
-#define LEN 256
+#define IFNAMSIZ 16
+#define PATH_MAX 4096
 
-char iface[LEN+1] = "";
+char iface[IFNAMSIZ];
+int unit = 0;
 int delay = 1;
 int graphlines = 10;
 int colors = 1;
@@ -36,12 +38,20 @@ void arg(int argc, char *argv[]) {
 	int i;
 
 	for (i = 1; i < argc; i++) {
-		if (!strcmp("-i", argv[i])) {
+		if (!strcmp("-s", argv[i])) {
+			unit = 1;
+		} else if (!strcmp("-n", argv[i])) {
+			colors = 0;
+		} else if (!strcmp("-i", argv[i])) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
 				fprintf(stderr, "error: -i needs parameter\n");
 				exit(EXIT_FAILURE);
 			}
-			strncpy(iface, argv[++i], LEN-1);
+			if (strlen(argv[i+1]) > IFNAMSIZ-1) {
+				fprintf(stderr, "error: maximum interface length: %d\n", IFNAMSIZ-1);
+				exit(EXIT_FAILURE);
+			}
+			strncpy(iface, argv[++i], IFNAMSIZ-1);
 		} else if (!strcmp("-d", argv[i])) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
 				fprintf(stderr, "error: -d needs parameter\n");
@@ -62,11 +72,10 @@ void arg(int argc, char *argv[]) {
 				fprintf(stderr, "error: minimum graphlines: 3");
 				exit(EXIT_FAILURE);
 			}
-		} else if (!strcmp("-n", argv[i])) {
-			colors = 0;
 		} else {
 			fprintf(stderr, "usage: %s [options]\n", argv[0]);
 			fprintf(stderr, "-h           help\n");
+			fprintf(stderr, "-s           use SI units (kB/s)\n");
 			fprintf(stderr, "-n           no colors\n");
 			fprintf(stderr, "-i <iface>   interface\n");
 			fprintf(stderr, "-d <seconds> delay\n");
@@ -77,8 +86,8 @@ void arg(int argc, char *argv[]) {
 }
 
 void ifaceup (void) {
-	char file[LEN+1];
-	char line[LEN+1];
+	char file[PATH_MAX];
+	char line[PATH_MAX];
 	FILE *fp;
 	DIR *d;
 	struct dirent *dir;
@@ -92,15 +101,15 @@ void ifaceup (void) {
 			if ((fp = fopen(file, "r")) == NULL)
 				continue;
 
-			if (fgets(line, 256, fp)) {
+			if (fgets(line, PATH_MAX-1, fp)) {
 				strtok(line, "\n");
 
 				// ppp0 shows UNKNOWN but only appears when connected
 				if (!strcmp("ppp0", dir->d_name))
-					strncpy(iface, dir->d_name, LEN);
+					strncpy(iface, dir->d_name, IFNAMSIZ-1);
 
 				if (!strcmp("up", line))
-					strncpy(iface, dir->d_name, LEN);
+					strncpy(iface, dir->d_name, IFNAMSIZ-1);
 			}
 			fclose(fp);
 		}
@@ -109,11 +118,12 @@ void ifaceup (void) {
 
 struct iface scalegraph(struct iface d) {
 	int i, j;
-	int COLS2 = COLS;
+	int COLS2;
 	double *rxs;
 	double *txs;
 
 	resize = 0;
+	COLS2 = COLS;
 
 	endwin();
 	refresh();
@@ -149,7 +159,7 @@ struct iface scalegraph(struct iface d) {
 	return d;
 }
 
-void printgraph(struct iface d) {
+void printgraph(struct iface d, double prefix, char unit[3][4]) {
 	int x, y;
 	double i;
 
@@ -160,7 +170,10 @@ void printgraph(struct iface d) {
 	for (y = graphlines-1; y >= 0; y--) {
 		for (x = 0; x < COLS; x++) {
 			i = d.rxs[x] / d.graphmax * graphlines;
-			i > y ? addch('*') : addch(' ');
+			if (x == 0)
+				addch('-');
+			else
+				i > y ? addch('*') : addch(' ');
 		}
 	}
 	attroff(COLOR_PAIR(1));
@@ -169,64 +182,66 @@ void printgraph(struct iface d) {
 	for (y = 0; y <= graphlines-1; y++) {
 		for (x = 0; x < COLS; x++) {
 			i = d.txs[x] / d.graphmax * graphlines;
-			i > y ? addch('*') : addch(' ');
+			if (x == 0)
+				addch('-');
+			else
+				i > y ? addch('*') : addch(' ');
 		}
 	}
 	attroff(COLOR_PAIR(2));
-	addch('\n');
 
-	if (d.graphmax > 1024.0) {
-		mvprintw(1, 0, "%.2lf MiB/s", d.graphmax / 1024.0);
-		mvprintw(graphlines, 0, "0.00 MiB/s");
-		mvprintw(graphlines+1, 0, "0.00 MiB/s");
-		mvprintw(graphlines*2-1, 0, "%.2lf MiB/s", d.graphmax / 1024.0);
+	if (d.graphmax > prefix) {
+		mvprintw(1, 0, "%.2lf %s/s", d.graphmax / prefix, unit[1]);
+		mvprintw(graphlines, 0, "0.00 %s/s", unit[0]);
+		mvprintw(graphlines+1, 0, "0.00 %s/s", unit[0]);
+		mvprintw(graphlines*2, 0, "%.2lf %s/s", d.graphmax / prefix, unit[1]);
 	} else {
-		mvprintw(1, 0, "%.2lf KiB/s", d.graphmax);
-		mvprintw(graphlines, 0, "0.00 KiB/s");
-		mvprintw(graphlines+1, 0, "0.00 KiB/s");
-		mvprintw(graphlines*2-1, 0, "%.2lf KiB/s", d.graphmax);
+		mvprintw(1, 0, "%.2lf %s/s", d.graphmax, unit[0]);
+		mvprintw(graphlines, 0, "0.00 %s/s", unit[0]);
+		mvprintw(graphlines+1, 0, "0.00 %s/s", unit[0]);
+		mvprintw(graphlines*2, 0, "%.2lf %s/s", d.graphmax, unit[0]);
 	}
 
-	for (y = graphlines*2; y < graphlines*2+2; y++)
+	for (y = graphlines*2+1; y < graphlines*2+4; y++)
 		for (x = 0; x < COLS; x++)
 			mvprintw(y, x, " ");
 
-	if (d.rxs[COLS-1] > 1024.0 || d.txs[COLS-1] > 1024.0) {
-		mvprintw(graphlines*2, (COLS/4)-9, "%7s %.2lf MiB/s", "RX:", d.rxs[COLS-1] / 1024.0);
-		mvprintw(graphlines*2, (COLS/4)-9+(COLS/2), "%7s %.2lf MiB/s", "TX:", d.txs[COLS-1] / 1024.0);
+	if (d.rxs[COLS-1] > prefix || d.txs[COLS-1] > prefix) {
+		mvprintw(graphlines*2+1, (COLS/4)-9, "%7s %.2lf %s/s", "RX:", d.rxs[COLS-1] / prefix, unit[1]);
+		mvprintw(graphlines*2+1, (COLS/4)-9+(COLS/2), "%7s %.2lf %s/s", "TX:", d.txs[COLS-1] / prefix, unit[1]);
 	} else {
-		mvprintw(graphlines*2, (COLS/4)-9, "%7s %.2lf KiB/s", "RX:", d.rxs[COLS-1]);
-		mvprintw(graphlines*2, (COLS/4)-9+(COLS/2), "%7s %.2lf KiB/s", "TX:", d.txs[COLS-1]);
+		mvprintw(graphlines*2+1, (COLS/4)-9, "%7s %.2lf %s/s", "RX:", d.rxs[COLS-1], unit[0]);
+		mvprintw(graphlines*2+1, (COLS/4)-9+(COLS/2), "%7s %.2lf %s/s", "TX:", d.txs[COLS-1], unit[0]);
 	}
 
-	if (d.rxmax > 1024.0 || d.txmax > 1024.0) {
-		mvprintw(graphlines*2+1, (COLS/4)-9, "%7s %.2lf MiB/s", "max:", d.rxmax / 1024.0);
-		mvprintw(graphlines*2+1, (COLS/4)-9+(COLS/2), "%7s %.2lf MiB/s", "max:", d.txmax / 1024.0);
+	if (d.rxmax > prefix || d.txmax > prefix) {
+		mvprintw(graphlines*2+2, (COLS/4)-9, "%7s %.2lf %s/s", "max:", d.rxmax / prefix, unit[1]);
+		mvprintw(graphlines*2+2, (COLS/4)-9+(COLS/2), "%7s %.2lf %s/s", "max:", d.txmax / prefix, unit[1]);
 	} else {
-		mvprintw(graphlines*2+1, (COLS/4)-9, "%7s %.2lf KiB/s", "max:", d.rxmax);
-		mvprintw(graphlines*2+1, (COLS/4)-9+(COLS/2), "%7s %.2lf KiB/s", "max:", d.txmax);
+		mvprintw(graphlines*2+2, (COLS/4)-9, "%7s %.2lf %s/s", "max:", d.rxmax, unit[0]);
+		mvprintw(graphlines*2+2, (COLS/4)-9+(COLS/2), "%7s %.2lf %s/s", "max:", d.txmax, unit[0]);
 	}
 
-	if (d.rx / 1024.0 / 1024.0 > 1024.0 || d.tx / 1024.0 / 1024.0 > 1024.0) {
-		mvprintw(graphlines*2+2, (COLS/4)-9, "%7s %.2lf GiB", "total:", d.rx / 1024.0 / 1024.0 / 1024.0);
-		mvprintw(graphlines*2+2, (COLS/4)-9+(COLS/2), "%7s %.2lf GiB", "total:", d.tx / 1024.0 / 1024.0 / 1024.0);
+	if (d.rx / prefix / prefix > prefix || d.tx / prefix / prefix > prefix) {
+		mvprintw(graphlines*2+3, (COLS/4)-9, "%7s %.2lf %s", "total:", d.rx / prefix / prefix / prefix, unit[2]);
+		mvprintw(graphlines*2+3, (COLS/4)-9+(COLS/2), "%7s %.2lf %s", "total:",
+				d.tx / prefix / prefix / prefix, unit[2]);
 	} else {
-		mvprintw(graphlines*2+2, (COLS/4)-9, "%7s %.2lf MiB", "total:", d.rx / 1024.0 / 1024.0);
-		mvprintw(graphlines*2+2, (COLS/4)-9+(COLS/2), "%7s %.2lf MiB", "total:", d.tx / 1024.0 / 1024.0);
+		mvprintw(graphlines*2+3, (COLS/4)-9, "%7s %.2lf %s", "total:", d.rx / prefix / prefix, unit[1]);
+		mvprintw(graphlines*2+3, (COLS/4)-9+(COLS/2), "%7s %.2lf %s", "total:", d.tx / prefix / prefix, unit[1]);
 	}
-	addch('\n');
 
 	refresh();
 }
 
 long fgetl(char *file) {
-	char line[LEN+1];
+	char line[PATH_MAX];
 	FILE *fp;
 
 	if ((fp = fopen(file, "r")) == NULL)
 		return -1;
 
-	if (fgets(line, LEN, fp) == NULL) {
+	if (fgets(line, PATH_MAX-1, fp) == NULL) {
 		fclose(fp);
 		return -1;
 	}
@@ -236,8 +251,8 @@ long fgetl(char *file) {
 	return strtol(line, NULL, 0);
 }
 
-struct iface getdata(struct iface d) {
-	char file[LEN+1];
+struct iface getdata(struct iface d, double prefix) {
+	char file[PATH_MAX];
 	int i;
 	long rx, tx;
 
@@ -276,8 +291,8 @@ struct iface getdata(struct iface d) {
 		d.txs[i] = d.txs[i+1];
 	}
 
-	d.rxs[COLS-1] = (d.rx - rx) / 1024.0 / delay;
-	d.txs[COLS-1] = (d.tx - tx) / 1024.0 / delay;
+	d.rxs[COLS-1] = (d.rx - rx) / prefix / delay;
+	d.txs[COLS-1] = (d.tx - tx) / prefix / delay;
 
 	d.graphmax = 0;
 	for (i = 0; i < COLS; i++) {
@@ -296,19 +311,24 @@ struct iface getdata(struct iface d) {
 }
 
 int main(int argc, char *argv[]) {
-	struct iface d = {.rx = 0, .tx = 0, .rxmax = 0, .txmax = 0, .graphmax = 0};
+	int prefix;
 	char key;
+	char units[2][3][4] = {{ "KiB", "MiB", "GiB" }, { "kB", "MB", "GB" }};
+	struct iface d = {.rx = 0, .tx = 0, .rxmax = 0, .txmax = 0, .graphmax = 0};
+
+	strncpy(iface, "", IFNAMSIZ);
 
 	arg(argc, argv);
 
 	if (iface[0] == '\0')
 		ifaceup();
 
+	prefix = unit ? 1000.0 : 1024.0;
+
 	initscr();
 	curs_set(0);
 	noecho();
 	nodelay(stdscr, TRUE);
-
 	if (colors && has_colors()) {
 		start_color();
 		use_default_colors();
@@ -337,8 +357,9 @@ int main(int argc, char *argv[]) {
 		if (resize)
 			d = scalegraph(d);
 
-		printgraph(d);
-		d = getdata(d);
+		printgraph(d, prefix, units[unit]);
+
+		d = getdata(d, prefix);
 	}
 
 	free(d.rxs);

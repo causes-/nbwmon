@@ -11,13 +11,15 @@ print bandwidth graph
 print bandwidth, peak and traffic
 scale to full window on start and resize
 detect active network interface
+support for multiple units
 support for colors
 
 usage
 -----
-usage: nbwmon [options]
--h         help
--n         no colors
--i <iface> interface
--d <delay> delay
--l <lines> graph height
+usage: ./nbwmon [options]
+-h           help
+-s           use SI units (kB/s)
+-n           no colors
+-i <iface>   interface
+-d <seconds> delay
+-l <lines>   graph height
