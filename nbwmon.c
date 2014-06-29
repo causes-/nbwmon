@@ -1,7 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <ctype.h>
 #include <unistd.h>
 #include <signal.h>
 #include <dirent.h>
@@ -26,13 +25,6 @@ struct iface {
 	double *rxs;
 	double *txs;
 };
-
-void sighandler(int sig) {
-	if (sig == SIGWINCH) {
-		resize = 1;
-		signal(SIGWINCH, sighandler);
-	}
-}
 
 void arg(int argc, char *argv[]) {
 	int i;
@@ -84,7 +76,7 @@ void arg(int argc, char *argv[]) {
 	}
 }
 
-void ifaceup (void) {
+void detectiface (void) {
 	char file[PATH_MAX];
 	char line[PATH_MAX];
 	FILE *fp;
@@ -103,7 +95,7 @@ void ifaceup (void) {
 			if (fgets(line, PATH_MAX-1, fp)) {
 				strtok(line, "\n");
 
-				// ppp0 shows UNKNOWN but only appears when connected
+				// ppp0 reports UNKNOWN but only appears when connected
 				if (!strcmp("ppp0", dir->d_name))
 					strncpy(iface, dir->d_name, IFNAMSIZ-1);
 
@@ -112,6 +104,13 @@ void ifaceup (void) {
 			}
 			fclose(fp);
 		}
+	}
+}
+
+void sighandler(int sig) {
+	if (sig == SIGWINCH) {
+		resize = 1;
+		signal(SIGWINCH, sighandler);
 	}
 }
 
@@ -158,7 +157,7 @@ struct iface scalegraph(struct iface d) {
 	return d;
 }
 
-void printgraph(struct iface d, double prefix, char unit[3][4]) {
+void printgraph(struct iface d, double prefix, const char unit[3][4]) {
 	int y, x;
 	double i;
 
@@ -312,15 +311,26 @@ struct iface getdata(struct iface d, double prefix) {
 int main(int argc, char *argv[]) {
 	double prefix;
 	char key;
-	char units[2][3][4] = {{ "KiB", "MiB", "GiB" }, { "kB", "MB", "GB" }};
-	struct iface d = {.rx = 0, .tx = 0, .rxmax = 0, .txmax = 0, .graphmax = 0};
+
+	const char units[2][3][4] = {
+		{ "KiB", "MiB", "GiB" },
+		{ "kB", "MB", "GB" }
+	};
+
+	struct iface d = {
+		.rx = 0,
+		.tx = 0,
+		.rxmax = 0,
+		.txmax = 0,
+		.graphmax = 0
+	};
 
 	strncpy(iface, "", IFNAMSIZ-1);
 
 	arg(argc, argv);
 
 	if (iface[0] == '\0')
-		ifaceup();
+		detectiface();
 
 	prefix = si ? 1000.0 : 1024.0;
 
@@ -350,7 +360,7 @@ int main(int argc, char *argv[]) {
 
 	while (1) {
 		key = getch();
-		if (key != ERR && tolower(key) == 'q')
+		if (key != ERR && key == 'q')
 			break;
 
 		if (resize)

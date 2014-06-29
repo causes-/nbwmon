@@ -8,8 +8,8 @@ ncurses bandwidth monitor
 features
 --------
 print bandwidth graph
-print bandwidth, peak and traffic
-scale to full window on start and resize
+print speed, peak and traffic
+scale to full window on startup and resize
 detect active network interface
 support for multiple units
 support for colors
