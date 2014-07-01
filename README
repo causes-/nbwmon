@@ -16,10 +16,11 @@ support for colors
 
 usage
 -----
-usage: ./nbwmon [options]
+usage: nbwmon [options]
 -h             help
 -s             use SI units
 -n             no colors
+-f             full height
 -i <interface> network interface
 -d <seconds>   delay
 -l <lines>     graph height

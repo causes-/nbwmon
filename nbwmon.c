@@ -9,12 +9,13 @@
 #include <linux/limits.h>
 #include <ncurses.h>
 
-char iface[IFNAMSIZ];
+char ifname[IFNAMSIZ];
 int si = 0;
+int colors = 1;
+int fullheight = 0;
 int delay = 1;
 int graphlines = 10;
-int colors = 1;
-int resize = 1;
+int resize = 0;
 
 struct iface {
 	long rx;
@@ -34,6 +35,8 @@ void arg(int argc, char *argv[]) {
 			si = 1;
 		} else if (!strcmp("-n", argv[i])) {
 			colors = 0;
+		} else if (!strcmp("-f", argv[i])) {
+			fullheight = 1;
 		} else if (!strcmp("-i", argv[i])) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
 				fprintf(stderr, "-i needs parameter\n");
@@ -42,7 +45,7 @@ void arg(int argc, char *argv[]) {
 				fprintf(stderr, "maximum interface length: %d\n", IFNAMSIZ-1);
 				exit(EXIT_FAILURE);
 			}
-			strncpy(iface, argv[++i], IFNAMSIZ-1);
+			strncpy(ifname, argv[++i], IFNAMSIZ-1);
 		} else if (!strcmp("-d", argv[i])) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
 				fprintf(stderr, "-d needs parameter\n");
@@ -68,6 +71,7 @@ void arg(int argc, char *argv[]) {
 			fprintf(stderr, "-h             help\n");
 			fprintf(stderr, "-s             use SI units\n");
 			fprintf(stderr, "-n             no colors\n");
+			fprintf(stderr, "-f             full height\n");
 			fprintf(stderr, "-i <interface> network interface\n");
 			fprintf(stderr, "-d <seconds>   delay\n");
 			fprintf(stderr, "-l <lines>     graph height\n");
@@ -97,10 +101,10 @@ void detectiface (void) {
 
 				// ppp0 reports UNKNOWN but only appears when connected
 				if (!strcmp("ppp0", dir->d_name))
-					strncpy(iface, dir->d_name, IFNAMSIZ-1);
+					strncpy(ifname, dir->d_name, IFNAMSIZ-1);
 
 				if (!strcmp("up", line))
-					strncpy(iface, dir->d_name, IFNAMSIZ-1);
+					strncpy(ifname, dir->d_name, IFNAMSIZ-1);
 			}
 			fclose(fp);
 		}
@@ -127,8 +131,11 @@ struct iface scalegraph(struct iface d) {
 	refresh();
 	clear();
 
-	if (COLS == COLS2)
+	if (COLS == COLS2 && !fullheight)
 		return d;
+
+	if (fullheight)
+		graphlines = LINES/2-2;
 
 	rxs = d.rxs;
 	txs = d.txs;
@@ -161,7 +168,7 @@ void printgraph(struct iface d, double prefix, const char unit[3][4]) {
 	int y, x;
 	double i;
 
-	mvprintw(0, COLS/2-7, "interface: %s", iface);
+	mvprintw(0, COLS/2-7, "interface: %s", ifname);
 	addch('\n');
 
 	attron(COLOR_PAIR(1));
@@ -254,15 +261,15 @@ struct iface getdata(struct iface d, double prefix) {
 	int i;
 	long rx, tx;
 
-	sprintf(file, "/sys/class/net/%s/statistics/rx_bytes", iface);
+	sprintf(file, "/sys/class/net/%s/statistics/rx_bytes", ifname);
 	rx = fgetl(file);
-	sprintf(file, "/sys/class/net/%s/statistics/tx_bytes", iface);
+	sprintf(file, "/sys/class/net/%s/statistics/tx_bytes", ifname);
 	tx = fgetl(file);
 	if (rx == -1 || tx == -1) {
 		free(d.rxs);
 		free(d.txs);
 		endwin();
-		fprintf(stderr, "cant find network interface: %s\n", iface);
+		fprintf(stderr, "cant find network interface: %s\n", ifname);
 		fprintf(stderr, "you can select interface with: -i <interface>\n");
 		exit(EXIT_FAILURE);
 	}
@@ -271,15 +278,15 @@ struct iface getdata(struct iface d, double prefix) {
 	if (resize)
 		return d;
 
-	sprintf(file, "/sys/class/net/%s/statistics/rx_bytes", iface);
+	sprintf(file, "/sys/class/net/%s/statistics/rx_bytes", ifname);
 	d.rx = fgetl(file);
-	sprintf(file, "/sys/class/net/%s/statistics/tx_bytes", iface);
+	sprintf(file, "/sys/class/net/%s/statistics/tx_bytes", ifname);
 	d.tx = fgetl(file);
 	if (rx == -1 || tx == -1) {
 		free(d.rxs);
 		free(d.txs);
 		endwin();
-		fprintf(stderr, "cant find network interface: %s\n", iface);
+		fprintf(stderr, "cant find network interface: %s\n", ifname);
 		fprintf(stderr, "you can select interface with: -i <interface>\n");
 		exit(EXIT_FAILURE);
 	}
@@ -325,11 +332,11 @@ int main(int argc, char *argv[]) {
 		.graphmax = 0
 	};
 
-	strncpy(iface, "", IFNAMSIZ-1);
+	strncpy(ifname, "", IFNAMSIZ-1);
 
 	arg(argc, argv);
 
-	if (iface[0] == '\0')
+	if (ifname[0] == '\0')
 		detectiface();
 
 	prefix = si ? 1000.0 : 1024.0;
@@ -344,6 +351,9 @@ int main(int argc, char *argv[]) {
 		init_pair(1, COLOR_GREEN, -1);
 		init_pair(2, COLOR_RED, -1);
 	}
+
+	if (fullheight)
+		graphlines = LINES/2-2;
 
 	d.rxs = calloc(COLS, sizeof(double));
 	d.txs = calloc(COLS, sizeof(double));
