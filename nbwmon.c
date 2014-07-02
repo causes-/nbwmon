@@ -121,10 +121,7 @@ void printgraph(struct iface d, const char unit[3][4]) {
 	for (y = d.graphlines-1; y >= 0; y--) {
 		for (x = 0; x < COLS; x++) {
 			i = d.rxs[x] / d.graphmax * d.graphlines;
-			if (x == 0)
-				addch('-');
-			else
-				i > y ? addch('*') : addch(' ');
+			i > y ? addch('*') : (x == 0 ? addch('-') : addch(' '));
 		}
 	}
 	attroff(COLOR_PAIR(1));
@@ -133,10 +130,7 @@ void printgraph(struct iface d, const char unit[3][4]) {
 	for (y = 0; y <= d.graphlines-1; y++) {
 		for (x = 0; x < COLS; x++) {
 			i = d.txs[x] / d.graphmax * d.graphlines;
-			if (x == 0)
-				addch('-');
-			else
-				i > y ? addch('*') : addch(' ');
+			i > y ? addch('*') : (x == 0 ? addch('-') : addch(' '));
 		}
 	}
 	attroff(COLOR_PAIR(2));
