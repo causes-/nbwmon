@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -5,8 +7,8 @@
 #include <signal.h>
 #include <dirent.h>
 #include <sys/socket.h>
-#include <linux/if.h>
-#include <linux/limits.h>
+#include <net/if.h>
+#include <limits.h>
 #include <ncurses.h>
 
 static sig_atomic_t resize = 0;
@@ -17,8 +19,8 @@ struct iface {
 	int delay;
 	int graphlines;
 	int fixedheight;
-	long rx;
-	long tx;
+	long long rx;
+	long long tx;
 	double prefix;
 	double rxmax;
 	double txmax;
@@ -190,7 +192,7 @@ void printgraph(struct iface d, const char unit[3][4]) {
 	refresh();
 }
 
-long fgetl(char *file) {
+long long fgetll(char *file) {
 	char line[PATH_MAX];
 	FILE *fp;
 
@@ -204,18 +206,18 @@ long fgetl(char *file) {
 
 	fclose(fp);
 
-	return strtol(line, NULL, 0);
+	return strtoll(line, NULL, 0);
 }
 
 struct iface getdata(struct iface d) {
 	char file[PATH_MAX];
 	int i;
-	long rx, tx;
+	long long rx, tx;
 
 	sprintf(file, "/sys/class/net/%s/statistics/rx_bytes", d.ifname);
-	rx = fgetl(file);
+	rx = fgetll(file);
 	sprintf(file, "/sys/class/net/%s/statistics/tx_bytes", d.ifname);
-	tx = fgetl(file);
+	tx = fgetll(file);
 	if (rx == -1 || tx == -1) {
 		free(d.rxs);
 		free(d.txs);
@@ -230,9 +232,9 @@ struct iface getdata(struct iface d) {
 		return d;
 
 	sprintf(file, "/sys/class/net/%s/statistics/rx_bytes", d.ifname);
-	d.rx = fgetl(file);
+	d.rx = fgetll(file);
 	sprintf(file, "/sys/class/net/%s/statistics/tx_bytes", d.ifname);
-	d.tx = fgetl(file);
+	d.tx = fgetll(file);
 	if (rx == -1 || tx == -1) {
 		free(d.rxs);
 		free(d.txs);
@@ -310,7 +312,7 @@ int main(int argc, char *argv[]) {
 			}
 			d.delay = strtol(argv[++i], NULL, 0);
 			if (d.delay < 1) {
-				fprintf(stderr, "minimum d.delay: 1\n");
+				fprintf(stderr, "minimum delay: 1\n");
 				exit(EXIT_FAILURE);
 			}
 		} else if (!strcmp("-l", argv[i])) {
@@ -343,7 +345,7 @@ int main(int argc, char *argv[]) {
 		free(d.rxs);
 		free(d.txs);
 		endwin();
-		fprintf(stderr, "couldnt find active interface\n");
+		fprintf(stderr, "couldn't find active interface\n");
 		return EXIT_FAILURE;
 	}
 
