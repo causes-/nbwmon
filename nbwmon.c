@@ -380,6 +380,8 @@ int main(int argc, char *argv[]) {
 		key = getch();
 		if (key != ERR && key == 'q')
 			break;
+		if (key != ERR && key == 'r')
+			d = scalegraph(d);
 
 		if (resize)
 			d = scalegraph(d);
