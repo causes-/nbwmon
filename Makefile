@@ -10,4 +10,4 @@ uninstall:
 	rm -f ${DESTDIR}/usr/bin/nbwmon
 
 clean:
-	rm nbwmon
+	rm -f nbwmon
