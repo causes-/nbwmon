@@ -210,40 +210,30 @@ long long fgetll(char *file) {
 	return strtoll(line, NULL, 0);
 }
 
-struct iface getdata(struct iface d, int delay, double prefix) {
+void getcounters(char *ifname, long long *rx, long long *tx) {
 	char file[PATH_MAX];
+
+	sprintf(file, "/sys/class/net/%s/statistics/rx_bytes", ifname);
+	*rx = fgetll(file);
+	sprintf(file, "/sys/class/net/%s/statistics/tx_bytes", ifname);
+	*tx = fgetll(file);
+}
+
+struct iface getdata(struct iface d, int delay, double prefix) {
 	int i;
 	long long rx, tx;
 
-	sprintf(file, "/sys/class/net/%s/statistics/rx_bytes", d.ifname);
-	rx = fgetll(file);
-	sprintf(file, "/sys/class/net/%s/statistics/tx_bytes", d.ifname);
-	tx = fgetll(file);
-	if (rx == -1 || tx == -1) {
-		free(d.rxs);
-		free(d.txs);
-		endwin();
-		fprintf(stderr, "cant find network interface: %s\n", d.ifname);
-		fprintf(stderr, "you can select interface with: -i <interface>\n");
-		exit(EXIT_FAILURE);
-	}
+	getcounters(d.ifname, &rx, &tx);
+	if (rx == -1 || tx == -1)
+		goto err;
 
 	sleep(delay);
 	if (resize)
 		return d;
 
-	sprintf(file, "/sys/class/net/%s/statistics/rx_bytes", d.ifname);
-	d.rx = fgetll(file);
-	sprintf(file, "/sys/class/net/%s/statistics/tx_bytes", d.ifname);
-	d.tx = fgetll(file);
-	if (rx == -1 || tx == -1) {
-		free(d.rxs);
-		free(d.txs);
-		endwin();
-		fprintf(stderr, "cant find network interface: %s\n", d.ifname);
-		fprintf(stderr, "you can select interface with: -i <interface>\n");
-		exit(EXIT_FAILURE);
-	}
+	getcounters(d.ifname, &d.rx, &d.tx);
+	if (rx == -1 || tx == -1)
+		goto err;
 
 	for (i = 0; i < COLS-1; i++) {
 		d.rxs[i] = d.rxs[i+1];
@@ -267,6 +257,14 @@ struct iface getdata(struct iface d, int delay, double prefix) {
 		d.txmax = d.txs[COLS-1];
 
 	return d;
+
+err:
+	free(d.rxs);
+	free(d.txs);
+	endwin();
+	fprintf(stderr, "cant find network interface: %s\n", d.ifname);
+	fprintf(stderr, "you can select interface with: -i <interface>\n");
+	exit(EXIT_FAILURE);
 }
 
 int main(int argc, char *argv[]) {
