@@ -1,15 +1,14 @@
 #define _GNU_SOURCE
 
-#include <limits.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-#include <sys/socket.h>
 #include <net/if.h>
 #include <ifaddrs.h>
+#include <linux/if_link.h>
 
 #include <ncurses.h>
 
@@ -43,9 +42,9 @@ char *detectiface(void) {
 	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
 		if (ifa->ifa_flags & IFF_LOOPBACK)
 			continue;
-		if (!(ifa->ifa_flags & IFF_RUNNING))
+		else if (!(ifa->ifa_flags & IFF_RUNNING))
 			continue;
-		if (!(ifa->ifa_flags & IFF_UP))
+		else if (!(ifa->ifa_flags & IFF_UP))
 			continue;
 		strncpy(ifname, ifa->ifa_name, IFNAMSIZ - 1);
 		ifname[IFNAMSIZ] = '\0';
@@ -193,30 +192,28 @@ void printgraph(struct iface d, double prefix, int graphlines) {
 	refresh();
 }
 
-long long fgetll(char *file) {
-	char line[PATH_MAX];
-	FILE *fp;
+int getcounters(char *ifname, long long *rx, long long *tx) {
+	struct ifaddrs *ifas, *ifa;
+	struct rtnl_link_stats *stats;
+	int family;
 
-	if ((fp = fopen(file, "r")) == NULL)
+	if (getifaddrs(&ifas) == -1)
 		return -1;
 
-	if (fgets(line, PATH_MAX-1, fp) == NULL) {
-		fclose(fp);
-		return -1;
+	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
+		family = ifa->ifa_addr->sa_family;
+		if (family == AF_PACKET && ifa->ifa_data != NULL) {
+			if (!strcmp(ifa->ifa_name, ifname)) {
+				stats = ifa->ifa_data;
+				*rx = stats->rx_bytes;
+				*tx = stats->tx_bytes;
+			}
+		}
 	}
 
-	fclose(fp);
+	freeifaddrs(ifas);
 
-	return strtoll(line, NULL, 0);
-}
-
-void getcounters(char *ifname, long long *rx, long long *tx) {
-	char file[PATH_MAX];
-
-	sprintf(file, "/sys/class/net/%s/statistics/rx_bytes", ifname);
-	*rx = fgetll(file);
-	sprintf(file, "/sys/class/net/%s/statistics/tx_bytes", ifname);
-	*tx = fgetll(file);
+	return 0;
 }
 
 struct iface getdata(struct iface d, int delay, double prefix) {
@@ -224,16 +221,12 @@ struct iface getdata(struct iface d, int delay, double prefix) {
 	long long rx, tx;
 
 	getcounters(d.ifname, &rx, &tx);
-	if (rx == -1 || tx == -1)
-		goto err;
 
 	sleep(delay);
 	if (resize)
 		return d;
 
 	getcounters(d.ifname, &d.rx, &d.tx);
-	if (rx == -1 || tx == -1)
-		goto err;
 
 	for (i = 0; i < COLS-1; i++) {
 		d.rxs[i] = d.rxs[i+1];
@@ -257,19 +250,14 @@ struct iface getdata(struct iface d, int delay, double prefix) {
 		d.txmax = d.txs[COLS-1];
 
 	return d;
-
-err:
-	free(d.rxs);
-	free(d.txs);
-	endwin();
-	fprintf(stderr, "cant find network interface: %s\n", d.ifname);
-	fprintf(stderr, "you can select interface with: -i <interface>\n");
-	exit(EXIT_FAILURE);
 }
 
 int main(int argc, char *argv[]) {
 	int i;
-	int colors, fixedheight = 0, delay = 1, graphlines = 0;
+	int colors = 1;
+	int delay = 1;
+	int fixedheight = 0;
+	int graphlines = 0;
 	double prefix = 1024.0;
 	char key;
 
@@ -361,7 +349,7 @@ int main(int argc, char *argv[]) {
 		key = getch();
 		if (key != ERR && key == 'q')
 			break;
-		if (key != ERR && key == 'r')
+		else if (key != ERR && key == 'r')
 			d = scalegraph(d, graphlines, fixedheight);
 
 		if (resize)
