@@ -1,16 +1,20 @@
 #define _GNU_SOURCE
 
-#include <signal.h>
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
+#include <signal.h>
 #include <unistd.h>
-
-#include <net/if.h>
-#include <ifaddrs.h>
-#include <linux/if_link.h>
-
 #include <ncurses.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+
+#ifdef __linux__
+#include <linux/if_link.h>
+#elif __OpenBSD__
+#include <sys/sysctl.h>
+#include <net/if_dl.h>
+#endif
 
 static sig_atomic_t resize = 0;
 
@@ -55,7 +59,7 @@ char *detectiface(void) {
 	return ifname;
 }
 
-struct iface scalegraph(struct iface d, int graphlines, int fixedheight) {
+struct iface scalegraph(struct iface d, int *graphlines, int fixedheight) {
 	int i, j;
 	int COLS2;
 	double *rxs;
@@ -69,7 +73,7 @@ struct iface scalegraph(struct iface d, int graphlines, int fixedheight) {
 	clear();
 
 	if (fixedheight == 0)
-		graphlines = LINES/2-2;
+		*graphlines = LINES/2-2;
 
 	if (COLS != COLS2) {
 		rxs = d.rxs;
@@ -192,6 +196,7 @@ void printgraph(struct iface d, double prefix, int graphlines) {
 	refresh();
 }
 
+#ifdef __linux__
 int getcounters(char *ifname, long long *rx, long long *tx) {
 	struct ifaddrs *ifas, *ifa;
 	struct rtnl_link_stats *stats;
@@ -201,9 +206,9 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 		return -1;
 
 	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
-		family = ifa->ifa_addr->sa_family;
-		if (family == AF_PACKET && ifa->ifa_data != NULL) {
-			if (!strcmp(ifa->ifa_name, ifname)) {
+		if (!strcmp(ifa->ifa_name, ifname)) {
+			family = ifa->ifa_addr->sa_family;
+			if (family == AF_PACKET && ifa->ifa_data != NULL) {
 				stats = ifa->ifa_data;
 				*rx = stats->rx_bytes;
 				*tx = stats->tx_bytes;
@@ -212,9 +217,65 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 	}
 
 	freeifaddrs(ifas);
+	return 0;
+}
+
+#elif __OpenBSD__
+int getcounters(char *ifname, long long *rx_bytes, long long *tx_bytes) {
+	int mib[6];
+	char *buf = NULL, *next;
+	size_t sz;
+	struct if_msghdr *ifm;
+	struct sockaddr_dl *sdl;
+
+	*rx_bytes = -1;
+	*tx_bytes = -1;
+
+	mib[0] = CTL_NET;
+	mib[1] = PF_ROUTE;
+	mib[2] = 0;		/* protocol */
+	mib[3] = 0;		/* wildcard address family */
+	mib[4] = NET_RT_IFLIST;	/* no flags */
+	mib[5] = 0;
+
+	if (sysctl(mib, 6, NULL, &sz, NULL, 0) < 0) {
+		free(buf);
+		return -1;
+	}
+
+	buf = malloc(sz);
+	if (!buf) {
+		fprintf(stderr, "out of memory\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (sysctl(mib, 6, buf, &sz, NULL, 0) < 0) {
+		free(buf);
+		return -1;
+	}
+
+	for (next = buf; next < buf + sz; next += ifm->ifm_msglen) {
+		ifm = (struct if_msghdr *)next;
+		if (ifm->ifm_type != RTM_NEWADDR) {
+			if (ifm->ifm_flags & IFF_UP) {
+				sdl = (struct sockaddr_dl *)(ifm + 1);
+				/* search for the right network interface */
+				if (sdl->sdl_family != AF_LINK)
+					continue;
+				if (strncmp(sdl->sdl_data, ifname, sdl->sdl_nlen) != 0)
+					continue;
+				*rx_bytes = ifm->ifm_data.ifi_ibytes;
+				*tx_bytes = ifm->ifm_data.ifi_obytes;
+				break;
+			}
+		}
+	}
+
+	free(buf);
 
 	return 0;
 }
+#endif
 
 struct iface getdata(struct iface d, int delay, double prefix) {
 	int i;
@@ -329,7 +390,7 @@ int main(int argc, char *argv[]) {
 		init_pair(2, COLOR_RED, -1);
 	}
 
-	if (graphlines == 0)
+	if (fixedheight == 0)
 		graphlines = LINES/2-2;
 
 	d.rxs = calloc(COLS, sizeof(double));
@@ -347,13 +408,10 @@ int main(int argc, char *argv[]) {
 
 	while (1) {
 		key = getch();
-		if (key != ERR && key == 'q')
+		if (key == 'q')
 			break;
-		else if (key != ERR && key == 'r')
-			d = scalegraph(d, graphlines, fixedheight);
-
-		if (resize)
-			d = scalegraph(d, graphlines, fixedheight);
+		else if (key == 'r' || resize)
+			d = scalegraph(d, &graphlines, fixedheight);
 
 		printgraph(d, prefix, graphlines);
 
