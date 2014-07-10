@@ -202,6 +202,9 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 	struct rtnl_link_stats *stats;
 	int family;
 
+	*rx = -1;
+	*tx = -1;
+
 	if (getifaddrs(&ifas) == -1)
 		return -1;
 
