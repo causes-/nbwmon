@@ -1,20 +1,22 @@
 #define _GNU_SOURCE
 
-#include <stdlib.h>
+#include <limits.h>
+#include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <signal.h>
-#include <dirent.h>
+
 #include <sys/socket.h>
 #include <net/if.h>
-#include <limits.h>
+#include <ifaddrs.h>
+
 #include <ncurses.h>
 
 static sig_atomic_t resize = 0;
 
 struct iface {
-	char ifname[IFNAMSIZ];
+	char *ifname;
 	int colors;
 	int delay;
 	int graphlines;
@@ -36,34 +38,26 @@ void sighandler(int sig) {
 	}
 }
 
-char *detectiface (char *ifname) {
-	char file[PATH_MAX];
-	char line[PATH_MAX];
-	FILE *fp;
-	DIR *dp;
-	struct dirent *dir;
+char *detectiface(void) {
+	static char ifname[IFNAMSIZ];
+	struct ifaddrs *ifas, *ifa;
 
-	if ((dp = opendir("/sys/class/net")) != NULL) {
-		while ((dir = readdir(dp)) != NULL) {
-			if (dir->d_name[0] == '.' || !strcmp("lo", dir->d_name))
-				continue;
+	if (getifaddrs(&ifas) == -1)
+		return NULL;
 
-			sprintf(file, "/sys/class/net/%s/operstate", dir->d_name);
-			if ((fp = fopen(file, "r")) == NULL)
-				continue;
-
-			if (fgets(line, PATH_MAX-1, fp)) {
-				strtok(line, "\n");
-
-				if (!strcmp("up", line))
-					strncpy(ifname, dir->d_name, IFNAMSIZ-1);
-				else if (!strcmp("ppp0", dir->d_name))
-					strncpy(ifname, dir->d_name, IFNAMSIZ-1);
-			}
-			fclose(fp);
-		}
+	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
+		if (ifa->ifa_flags & IFF_LOOPBACK)
+			continue;
+		if (!(ifa->ifa_flags & IFF_RUNNING))
+			continue;
+		if (!(ifa->ifa_flags & IFF_UP))
+			continue;
+		strncpy(ifname, ifa->ifa_name, IFNAMSIZ - 1);
+		ifname[IFNAMSIZ] = '\0';
+		break;
 	}
 
+	freeifaddrs(ifas);
 	return ifname;
 }
 
@@ -273,7 +267,6 @@ int main(int argc, char *argv[]) {
 	char key;
 
 	struct iface d = {
-		.ifname = "",
 		.prefix = 1024.0,
 		.colors = 1,
 		.delay = 1,
@@ -290,6 +283,8 @@ int main(int argc, char *argv[]) {
 		{ "KiB", "MiB", "GiB" },
 		{ "kB", "MB", "GB" }
 	};
+
+	d.ifname = detectiface();
 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp("-s", argv[i])) {
@@ -336,17 +331,6 @@ int main(int argc, char *argv[]) {
 			fprintf(stderr, "-l <lines>     graph height\n");
 			exit(EXIT_FAILURE);
 		}
-	}
-
-	if (!strcmp("", d.ifname))
-		strncpy(d.ifname, detectiface(d.ifname), IFNAMSIZ-1);
-
-	if (!strcmp("", d.ifname)) {
-		free(d.rxs);
-		free(d.txs);
-		endwin();
-		fprintf(stderr, "couldn't find active interface\n");
-		return EXIT_FAILURE;
 	}
 
 	initscr();
