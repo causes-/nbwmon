@@ -29,6 +29,56 @@ struct iface {
 	double *txs;
 };
 
+void arg(int argc, char *argv[], char *ifname, double *prefix, int *colors, int *delay, int *graphlines) {
+	int i;
+
+	for (i = 1; i < argc; i++) {
+		if (!strcmp("-i", argv[i])) {
+			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
+				fprintf(stderr, "-i needs parameter\n");
+				exit(EXIT_FAILURE);
+			} else if (strlen(argv[i+1]) > IFNAMSIZ-1) {
+				fprintf(stderr, "maximum interface length: %d\n", IFNAMSIZ-1);
+				exit(EXIT_FAILURE);
+			}
+			strncpy(ifname, argv[++i], IFNAMSIZ-1);
+		} else if (!strcmp("-s", argv[i])) {
+			*prefix = 1000.0;
+		} else if (!strcmp("-n", argv[i])) {
+			*colors = 0;
+		} else if (!strcmp("-d", argv[i])) {
+			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
+				fprintf(stderr, "-d needs parameter\n");
+				exit(EXIT_FAILURE);
+			}
+			*delay = strtol(argv[++i], NULL, 0);
+			if (*delay < 1) {
+				fprintf(stderr, "minimum delay: 1\n");
+				exit(EXIT_FAILURE);
+			}
+		} else if (!strcmp("-l", argv[i])) {
+			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
+				fprintf(stderr, "-l needs parameter\n");
+				exit(EXIT_FAILURE);
+			}
+			*graphlines = strtol(argv[++i], NULL, 0);
+			if (*graphlines < 3) {
+				fprintf(stderr, "minimum graph height: 3");
+				exit(EXIT_FAILURE);
+			}
+		} else {
+			fprintf(stderr, "usage: %s [options]\n", argv[0]);
+			fprintf(stderr, "-h             help\n");
+			fprintf(stderr, "-s             use SI units\n");
+			fprintf(stderr, "-n             no colors\n");
+			fprintf(stderr, "-i <interface> network interface\n");
+			fprintf(stderr, "-d <seconds>   delay\n");
+			fprintf(stderr, "-l <lines>     graph height\n");
+			exit(EXIT_FAILURE);
+		}
+	}
+}
+
 void sighandler(int sig) {
 	if (sig == SIGWINCH) {
 		resize = 1;
@@ -59,7 +109,7 @@ char *detectiface(void) {
 	return ifname;
 }
 
-struct iface scalegraph(struct iface d, int *graphlines, int fixedheight) {
+void scalegraph(struct iface *d, int *graphlines, int fixedlines) {
 	int i, j;
 	int COLS2;
 	double *rxs;
@@ -72,36 +122,34 @@ struct iface scalegraph(struct iface d, int *graphlines, int fixedheight) {
 	refresh();
 	clear();
 
-	if (fixedheight == 0)
+	if (fixedlines == 0)
 		*graphlines = LINES/2-2;
 
 	if (COLS != COLS2) {
-		rxs = d.rxs;
-		txs = d.txs;
+		rxs = d->rxs;
+		txs = d->txs;
 
-		d.rxs = calloc(COLS, sizeof(double));
-		d.txs = calloc(COLS, sizeof(double));
+		d->rxs = calloc(COLS, sizeof(double));
+		d->txs = calloc(COLS, sizeof(double));
 
-		if (d.rxs == NULL || d.txs == NULL) {
+		if (d->rxs == NULL || d->txs == NULL) {
 			free(rxs);
 			free(txs);
-			free(d.rxs);
-			free(d.txs);
+			free(d->rxs);
+			free(d->txs);
 			endwin();
-			fprintf(stderr, "memory allocation failed\n");
+			fprintf(stderr, "error: out of memory\n");
 			exit(EXIT_FAILURE);
 		}
 
 		for (i = COLS-1, j = COLS2-1; i >= 0 && j >= 0; i--, j--) {
-			d.rxs[i] = rxs[j];
-			d.txs[i] = txs[j];
+			d->rxs[i] = rxs[j];
+			d->txs[i] = txs[j];
 		}
 
 		free(rxs);
 		free(txs);
 	}
-
-	return d;
 }
 
 void printgraph(struct iface d, double prefix, int graphlines) {
@@ -280,47 +328,50 @@ int getcounters(char *ifname, long long *rx_bytes, long long *tx_bytes) {
 }
 #endif
 
-struct iface getdata(struct iface d, int delay, double prefix) {
+int getdata(struct iface *d, int delay, double prefix) {
 	int i;
 	long long rx, tx;
 
-	getcounters(d.ifname, &rx, &tx);
+	getcounters(d->ifname, &rx, &tx);
+	if (rx == -1 || tx == -1)
+		return 1;
 
 	sleep(delay);
 	if (resize)
-		return d;
+		return 0;
 
-	getcounters(d.ifname, &d.rx, &d.tx);
+	getcounters(d->ifname, &d->rx, &d->tx);
+	if (d->rx == -1 || d->tx == -1)
+		return 1;
 
 	for (i = 0; i < COLS-1; i++) {
-		d.rxs[i] = d.rxs[i+1];
-		d.txs[i] = d.txs[i+1];
+		d->rxs[i] = d->rxs[i+1];
+		d->txs[i] = d->txs[i+1];
 	}
 
-	d.rxs[COLS-1] = (d.rx - rx) / prefix / delay;
-	d.txs[COLS-1] = (d.tx - tx) / prefix / delay;
+	d->rxs[COLS-1] = (d->rx - rx) / prefix / delay;
+	d->txs[COLS-1] = (d->tx - tx) / prefix / delay;
 
-	d.graphmax = 0;
+	d->graphmax = 0;
 	for (i = 0; i < COLS; i++) {
-		if (d.rxs[i] > d.graphmax)
-			d.graphmax = d.rxs[i];
-		if (d.txs[i] > d.graphmax)
-			d.graphmax = d.txs[i];
+		if (d->rxs[i] > d->graphmax)
+			d->graphmax = d->rxs[i];
+		if (d->txs[i] > d->graphmax)
+			d->graphmax = d->txs[i];
 	}
 
-	if (d.rxs[COLS-1] > d.rxmax)
-		d.rxmax = d.rxs[COLS-1];
-	if (d.txs[COLS-1] > d.txmax)
-		d.txmax = d.txs[COLS-1];
+	if (d->rxs[COLS-1] > d->rxmax)
+		d->rxmax = d->rxs[COLS-1];
+	if (d->txs[COLS-1] > d->txmax)
+		d->txmax = d->txs[COLS-1];
 
-	return d;
+	return 0;
 }
 
 int main(int argc, char *argv[]) {
-	int i;
 	int colors = 1;
 	int delay = 1;
-	int fixedheight = 0;
+	int fixedlines = 0;
 	int graphlines = 0;
 	double prefix = 1024.0;
 	char key;
@@ -335,51 +386,14 @@ int main(int argc, char *argv[]) {
 
 	d.ifname = detectiface();
 
-	for (i = 1; i < argc; i++) {
-		if (!strcmp("-s", argv[i])) {
-			prefix = 1000.0;
-		} else if (!strcmp("-n", argv[i])) {
-			colors = 0;
-		} else if (!strcmp("-i", argv[i])) {
-			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
-				fprintf(stderr, "-i needs parameter\n");
-				exit(EXIT_FAILURE);
-			} else if (strlen(argv[i+1]) > IFNAMSIZ-1) {
-				fprintf(stderr, "maximum interface length: %d\n", IFNAMSIZ-1);
-				exit(EXIT_FAILURE);
-			}
-			strncpy(d.ifname, argv[++i], IFNAMSIZ-1);
-		} else if (!strcmp("-d", argv[i])) {
-			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
-				fprintf(stderr, "-d needs parameter\n");
-				exit(EXIT_FAILURE);
-			}
-			delay = strtol(argv[++i], NULL, 0);
-			if (delay < 1) {
-				fprintf(stderr, "minimum delay: 1\n");
-				exit(EXIT_FAILURE);
-			}
-		} else if (!strcmp("-l", argv[i])) {
-			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
-				fprintf(stderr, "-l needs parameter\n");
-				exit(EXIT_FAILURE);
-			}
-			graphlines = strtol(argv[++i], NULL, 0);
-			fixedheight = 1;
-			if (graphlines < 3) {
-				fprintf(stderr, "minimum graph height: 3");
-				exit(EXIT_FAILURE);
-			}
-		} else {
-			fprintf(stderr, "usage: %s [options]\n", argv[0]);
-			fprintf(stderr, "-h             help\n");
-			fprintf(stderr, "-s             use SI units\n");
-			fprintf(stderr, "-n             no colors\n");
-			fprintf(stderr, "-i <interface> network interface\n");
-			fprintf(stderr, "-d <seconds>   delay\n");
-			fprintf(stderr, "-l <lines>     graph height\n");
-			exit(EXIT_FAILURE);
-		}
+	arg(argc, argv, d.ifname, &prefix, &colors, &delay, &graphlines);
+
+	if (graphlines != 0)
+		fixedlines = 1;
+
+	if (!strcmp(d.ifname, "")) {
+		fprintf(stderr, "can't find network interface\n");
+		return EXIT_FAILURE;
 	}
 
 	initscr();
@@ -393,7 +407,7 @@ int main(int argc, char *argv[]) {
 		init_pair(2, COLOR_RED, -1);
 	}
 
-	if (fixedheight == 0)
+	if (fixedlines == 0)
 		graphlines = LINES/2-2;
 
 	d.rxs = calloc(COLS, sizeof(double));
@@ -414,11 +428,16 @@ int main(int argc, char *argv[]) {
 		if (key == 'q')
 			break;
 		else if (key == 'r' || resize)
-			d = scalegraph(d, &graphlines, fixedheight);
+			scalegraph(&d, &graphlines, fixedlines);
 
 		printgraph(d, prefix, graphlines);
 
-		d = getdata(d, delay, prefix);
+		if (getdata(&d, delay, prefix) != 0) {
+			free(d.rxs);
+			free(d.txs);
+			endwin();
+			return EXIT_SUCCESS;
+		}
 	}
 
 	free(d.rxs);
