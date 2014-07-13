@@ -1,5 +1,16 @@
 #define _GNU_SOURCE
 
+#ifdef __linux__
+#include <linux/if_link.h>
+#elif __OpenBSD__
+#include <sys/socket.h>
+#include <sys/sysctl.h>
+#include <net/if_dl.h>
+#include <net/route.h>
+#else
+#warning "your platform is not supported"
+#endif
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -8,15 +19,6 @@
 #include <ncurses.h>
 #include <ifaddrs.h>
 #include <net/if.h>
-
-#ifdef __linux__
-#include <linux/if_link.h>
-#elif __OpenBSD__
-#include <sys/sysctl.h>
-#include <net/if_dl.h>
-#else
-#warning "your platform is not supported"
-#endif
 
 static sig_atomic_t resize = 0;
 
