@@ -14,6 +14,8 @@
 #elif __OpenBSD__
 #include <sys/sysctl.h>
 #include <net/if_dl.h>
+#else
+#warning "your platform is not supported"
 #endif
 
 static sig_atomic_t resize = 0;
@@ -35,35 +37,36 @@ void arg(int argc, char *argv[], char *ifname, double *prefix, int *colors, int 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp("-i", argv[i])) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
-				fprintf(stderr, "-i needs parameter\n");
+				fprintf(stderr, "error: -i needs parameter\n");
 				exit(EXIT_FAILURE);
 			} else if (strlen(argv[i+1]) > IFNAMSIZ-1) {
-				fprintf(stderr, "maximum interface length: %d\n", IFNAMSIZ-1);
+				fprintf(stderr, "error: maximum interface length: %d\n", IFNAMSIZ-1);
 				exit(EXIT_FAILURE);
 			}
 			strncpy(ifname, argv[++i], IFNAMSIZ-1);
+			ifname[IFNAMSIZ-1] = '\0';
 		} else if (!strcmp("-s", argv[i])) {
 			*prefix = 1000.0;
 		} else if (!strcmp("-n", argv[i])) {
 			*colors = 0;
 		} else if (!strcmp("-d", argv[i])) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
-				fprintf(stderr, "-d needs parameter\n");
+				fprintf(stderr, "error: -d needs parameter\n");
 				exit(EXIT_FAILURE);
 			}
 			*delay = strtol(argv[++i], NULL, 0);
 			if (*delay < 1) {
-				fprintf(stderr, "minimum delay: 1\n");
+				fprintf(stderr, "error: minimum delay: 1\n");
 				exit(EXIT_FAILURE);
 			}
 		} else if (!strcmp("-l", argv[i])) {
 			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
-				fprintf(stderr, "-l needs parameter\n");
+				fprintf(stderr, "error: -l needs parameter\n");
 				exit(EXIT_FAILURE);
 			}
 			*graphlines = strtol(argv[++i], NULL, 0);
 			if (*graphlines < 3) {
-				fprintf(stderr, "minimum graph height: 3\n");
+				fprintf(stderr, "error: minimum graph height: 3\n");
 				exit(EXIT_FAILURE);
 			}
 		} else {
@@ -101,7 +104,7 @@ char *detectiface(void) {
 		else if (!(ifa->ifa_flags & IFF_UP))
 			continue;
 		strncpy(ifname, ifa->ifa_name, IFNAMSIZ - 1);
-		ifname[IFNAMSIZ] = '\0';
+		ifname[IFNAMSIZ-1] = '\0';
 		break;
 	}
 
