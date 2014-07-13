@@ -63,7 +63,7 @@ void arg(int argc, char *argv[], char *ifname, double *prefix, int *colors, int 
 			}
 			*graphlines = strtol(argv[++i], NULL, 0);
 			if (*graphlines < 3) {
-				fprintf(stderr, "minimum graph height: 3");
+				fprintf(stderr, "minimum graph height: 3\n");
 				exit(EXIT_FAILURE);
 			}
 		} else {
@@ -156,7 +156,7 @@ void printgraph(struct iface d, double prefix, int graphlines) {
 	int y, x;
 	double i;
 
-	char unit[3][4];
+	static char unit[3][4];
 
 	if (prefix > 1000.1) {
 		strncpy(unit[0], "KiB", 4);
@@ -175,7 +175,15 @@ void printgraph(struct iface d, double prefix, int graphlines) {
 	for (y = graphlines-1; y >= 0; y--) {
 		for (x = 0; x < COLS; x++) {
 			i = d.rxs[x] / d.graphmax * graphlines;
-			i > y ? addch('*') : (x == 0 ? addch('-') : addch(' '));
+			if (i > y)
+				addch('*');
+			else
+				if (x == 0) {
+					attroff(COLOR_PAIR(1));
+					addch('-');
+					attron(COLOR_PAIR(1));
+				} else
+					addch(' ');
 		}
 	}
 	attroff(COLOR_PAIR(1));
@@ -184,7 +192,15 @@ void printgraph(struct iface d, double prefix, int graphlines) {
 	for (y = 0; y <= graphlines-1; y++) {
 		for (x = 0; x < COLS; x++) {
 			i = d.txs[x] / d.graphmax * graphlines;
-			i > y ? addch('*') : (x == 0 ? addch('-') : addch(' '));
+			if (i > y)
+				addch('*');
+			else
+				if (x == 0) {
+					attroff(COLOR_PAIR(2));
+					addch('-');
+					attron(COLOR_PAIR(2));
+				} else
+					addch(' ');
 		}
 	}
 	attroff(COLOR_PAIR(2));
@@ -272,15 +288,15 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 }
 
 #elif __OpenBSD__
-int getcounters(char *ifname, long long *rx_bytes, long long *tx_bytes) {
+int getcounters(char *ifname, long long *rx, long long *tx) {
 	int mib[6];
 	char *buf = NULL, *next;
 	size_t sz;
 	struct if_msghdr *ifm;
 	struct sockaddr_dl *sdl;
 
-	*rx_bytes = -1;
-	*tx_bytes = -1;
+	*rx = -1;
+	*tx = -1;
 
 	mib[0] = CTL_NET;
 	mib[1] = PF_ROUTE;
@@ -296,7 +312,7 @@ int getcounters(char *ifname, long long *rx_bytes, long long *tx_bytes) {
 
 	buf = malloc(sz);
 	if (!buf) {
-		fprintf(stderr, "out of memory\n");
+		fprintf(stderr, "error: out of memory\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -315,15 +331,14 @@ int getcounters(char *ifname, long long *rx_bytes, long long *tx_bytes) {
 					continue;
 				if (strncmp(sdl->sdl_data, ifname, sdl->sdl_nlen) != 0)
 					continue;
-				*rx_bytes = ifm->ifm_data.ifi_ibytes;
-				*tx_bytes = ifm->ifm_data.ifi_obytes;
+				*rx = ifm->ifm_data.ifi_ibytes;
+				*tx = ifm->ifm_data.ifi_obytes;
 				break;
 			}
 		}
 	}
 
 	free(buf);
-
 	return 0;
 }
 #endif
@@ -392,7 +407,7 @@ int main(int argc, char *argv[]) {
 		fixedlines = 1;
 
 	if (!strcmp(d.ifname, "")) {
-		fprintf(stderr, "can't find network interface\n");
+		fprintf(stderr, "error: can't find network interface\n");
 		return EXIT_FAILURE;
 	}
 
@@ -417,7 +432,7 @@ int main(int argc, char *argv[]) {
 		free(d.rxs);
 		free(d.txs);
 		endwin();
-		fprintf(stderr, "memory allocation failed\n");
+		fprintf(stderr, "error: out of memory\n");
 		return EXIT_FAILURE;
 	}
 
@@ -436,6 +451,7 @@ int main(int argc, char *argv[]) {
 			free(d.rxs);
 			free(d.txs);
 			endwin();
+			fprintf(stderr, "error: can't read rx and tx bytes\n");
 			return EXIT_SUCCESS;
 		}
 	}
