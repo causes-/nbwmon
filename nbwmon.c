@@ -85,7 +85,7 @@ char *detectiface(void) {
 	return ifname;
 }
 
-void scalegraph(struct iface *d, int *graphlines, int fixedlines) {
+void scalegraph(struct iface *ifa, int *graphlines, int fixedlines) {
 	int i, j;
 	int COLS2;
 	double *rxs;
@@ -102,24 +102,24 @@ void scalegraph(struct iface *d, int *graphlines, int fixedlines) {
 		*graphlines = LINES/2-2;
 
 	if (COLS != COLS2) {
-		rxs = d->rxs;
-		txs = d->txs;
+		rxs = ifa->rxs;
+		txs = ifa->txs;
 
-		d->rxs = calloc(COLS, sizeof(double));
-		d->txs = calloc(COLS, sizeof(double));
+		ifa->rxs = calloc(COLS, sizeof(double));
+		ifa->txs = calloc(COLS, sizeof(double));
 
-		if (d->rxs == NULL || d->txs == NULL) {
+		if (ifa->rxs == NULL || ifa->txs == NULL) {
 			free(rxs);
 			free(txs);
-			free(d->rxs);
-			free(d->txs);
+			free(ifa->rxs);
+			free(ifa->txs);
 			endwin();
 			eprintf("out of memory\n");
 		}
 
 		for (i = COLS-1, j = COLS2-1; i >= 0 && j >= 0; i--, j--) {
-			d->rxs[i] = rxs[j];
-			d->txs[i] = txs[j];
+			ifa->rxs[i] = rxs[j];
+			ifa->txs[i] = txs[j];
 		}
 
 		free(rxs);
@@ -127,7 +127,7 @@ void scalegraph(struct iface *d, int *graphlines, int fixedlines) {
 	}
 }
 
-void printgraph(struct iface d, double prefix, int graphlines) {
+void printgraph(struct iface ifa, double prefix, int graphlines) {
 	static int y, x;
 	static double f;
 	static double rx;
@@ -145,13 +145,13 @@ void printgraph(struct iface d, double prefix, int graphlines) {
 		strncpy(unit[2], "GB", 4);
 	}
 
-	mvprintw(0, COLS/2-7, "interface: %s", d.ifname);
+	mvprintw(0, COLS/2-7, "interface: %s", ifa.ifname);
 	addch('\n');
 
 	attron(COLOR_PAIR(1));
 	for (y = graphlines-1; y >= 0; y--) {
 		for (x = 0; x < COLS; x++) {
-			f = d.rxs[x] / d.graphmax * graphlines;
+			f = ifa.rxs[x] / ifa.graphmax * graphlines;
 			if (f > y)
 				addch('*');
 			else
@@ -168,7 +168,7 @@ void printgraph(struct iface d, double prefix, int graphlines) {
 	attron(COLOR_PAIR(2));
 	for (y = 0; y <= graphlines-1; y++) {
 		for (x = 0; x < COLS; x++) {
-			f = d.txs[x] / d.graphmax * graphlines;
+			f = ifa.txs[x] / ifa.graphmax * graphlines;
 			if (f > y)
 				addch('*');
 			else
@@ -183,7 +183,7 @@ void printgraph(struct iface d, double prefix, int graphlines) {
 	attroff(COLOR_PAIR(2));
 
 	u = unit[0];
-	rx = d.graphmax;
+	rx = ifa.graphmax;
 	if (rx > prefix) {
 		u = unit[1];
 		rx /= prefix;
@@ -198,9 +198,9 @@ void printgraph(struct iface d, double prefix, int graphlines) {
 			mvprintw(y, x, " ");
 
 	u = unit[0];
-	rx = d.rxs[COLS-1];
-	tx = d.txs[COLS-1];
-	if (d.rxs[COLS-1] > prefix || d.txs[COLS-1] > prefix) {
+	rx = ifa.rxs[COLS-1];
+	tx = ifa.txs[COLS-1];
+	if (rx > prefix || tx > prefix) {
 		u = unit[1];
 		rx /= prefix;
 		tx /= prefix;
@@ -209,9 +209,9 @@ void printgraph(struct iface d, double prefix, int graphlines) {
 	mvprintw(graphlines*2+1, (COLS/4)-9+(COLS/2), "%7s %.2lf %s/s", "TX:", tx, u);
 
 	u = unit[0];
-	rx = d.rxmax;
-	tx = d.txmax;
-	if (d.rxmax > prefix || d.txmax > prefix) {
+	rx = ifa.rxmax;
+	tx = ifa.txmax;
+	if (rx > prefix || tx > prefix) {
 		u = unit[1];
 		rx /= prefix;
 		tx /= prefix;
@@ -220,8 +220,8 @@ void printgraph(struct iface d, double prefix, int graphlines) {
 	mvprintw(graphlines*2+2, (COLS/4)-9+(COLS/2), "%7s %.2lf %s/s", "max:", tx, u);
 
 	u = unit[1];
-	rx = d.rx / prefix / prefix;
-	tx = d.tx / prefix / prefix;
+	rx = ifa.rx / prefix / prefix;
+	tx = ifa.tx / prefix / prefix;
 	if (rx > prefix || tx > prefix) {
 		u = unit[2];
 		rx /= prefix;
@@ -314,11 +314,11 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 }
 #endif
 
-int getdata(struct iface *d, int delay, double prefix) {
+int getdata(struct iface *ifa, int delay, double prefix) {
 	static int i;
 	static long long rx, tx;
 
-	getcounters(d->ifname, &rx, &tx);
+	getcounters(ifa->ifname, &rx, &tx);
 	if (rx == -1 || tx == -1)
 		return 1;
 
@@ -326,30 +326,30 @@ int getdata(struct iface *d, int delay, double prefix) {
 	if (resize)
 		return 0;
 
-	getcounters(d->ifname, &d->rx, &d->tx);
-	if (d->rx == -1 || d->tx == -1)
+	getcounters(ifa->ifname, &ifa->rx, &ifa->tx);
+	if (ifa->rx == -1 || ifa->tx == -1)
 		return 1;
 
 	for (i = 0; i < COLS-1; i++) {
-		d->rxs[i] = d->rxs[i+1];
-		d->txs[i] = d->txs[i+1];
+		ifa->rxs[i] = ifa->rxs[i+1];
+		ifa->txs[i] = ifa->txs[i+1];
 	}
 
-	d->rxs[COLS-1] = (d->rx - rx) / prefix / delay;
-	d->txs[COLS-1] = (d->tx - tx) / prefix / delay;
+	ifa->rxs[COLS-1] = (ifa->rx - rx) / prefix / delay;
+	ifa->txs[COLS-1] = (ifa->tx - tx) / prefix / delay;
 
-	d->graphmax = 0;
+	ifa->graphmax = 0;
 	for (i = 0; i < COLS; i++) {
-		if (d->rxs[i] > d->graphmax)
-			d->graphmax = d->rxs[i];
-		if (d->txs[i] > d->graphmax)
-			d->graphmax = d->txs[i];
+		if (ifa->rxs[i] > ifa->graphmax)
+			ifa->graphmax = ifa->rxs[i];
+		if (ifa->txs[i] > ifa->graphmax)
+			ifa->graphmax = ifa->txs[i];
 	}
 
-	if (d->rxs[COLS-1] > d->rxmax)
-		d->rxmax = d->rxs[COLS-1];
-	if (d->txs[COLS-1] > d->txmax)
-		d->txmax = d->txs[COLS-1];
+	if (ifa->rxs[COLS-1] > ifa->rxmax)
+		ifa->rxmax = ifa->rxs[COLS-1];
+	if (ifa->txs[COLS-1] > ifa->txmax)
+		ifa->txmax = ifa->txs[COLS-1];
 
 	return 0;
 }
@@ -363,11 +363,11 @@ int main(int argc, char *argv[]) {
 	double prefix = 1024.0;
 	char key;
 
-	struct iface d;
+	struct iface ifa;
 
-	memset(&d, 0, sizeof d);
+	memset(&ifa, 0, sizeof ifa);
 
-	d.ifname = detectiface();
+	ifa.ifname = detectiface();
 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp("-s", argv[i])) {
@@ -379,8 +379,8 @@ int main(int argc, char *argv[]) {
 		} else if (!strcmp("-i", argv[i])) {
 			if (strlen(argv[i+1]) > IFNAMSIZ-1)
 				eprintf("maximum interface length: %d\n", IFNAMSIZ-1);
-			strncpy(d.ifname, argv[++i], IFNAMSIZ-1);
-			d.ifname[IFNAMSIZ-1] = '\0';
+			strncpy(ifa.ifname, argv[++i], IFNAMSIZ-1);
+			ifa.ifname[IFNAMSIZ-1] = '\0';
 		} else if (!strcmp("-d", argv[i])) {
 			delay = strtol(argv[++i], NULL, 10);
 			if (delay < 1)
@@ -393,7 +393,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if (d.ifname[0] == '\0')
+	if (ifa.ifname[0] == '\0')
 		eprintf("can't detect network interface\n");
 
 	initscr();
@@ -410,12 +410,12 @@ int main(int argc, char *argv[]) {
 	if (fixedlines == 0)
 		graphlines = LINES/2-2;
 
-	d.rxs = calloc(COLS, sizeof(double));
-	d.txs = calloc(COLS, sizeof(double));
+	ifa.rxs = calloc(COLS, sizeof(double));
+	ifa.txs = calloc(COLS, sizeof(double));
 
-	if (d.rxs == NULL || d.txs == NULL) {
-		free(d.rxs);
-		free(d.txs);
+	if (ifa.rxs == NULL || ifa.txs == NULL) {
+		free(ifa.rxs);
+		free(ifa.txs);
 		endwin();
 		eprintf("out of memory\n");
 	}
@@ -427,20 +427,20 @@ int main(int argc, char *argv[]) {
 		if (key == 'q')
 			break;
 		else if (key == 'r' || resize)
-			scalegraph(&d, &graphlines, fixedlines);
+			scalegraph(&ifa, &graphlines, fixedlines);
 
-		printgraph(d, prefix, graphlines);
+		printgraph(ifa, prefix, graphlines);
 
-		if (getdata(&d, delay, prefix) != 0) {
-			free(d.rxs);
-			free(d.txs);
+		if (getdata(&ifa, delay, prefix) != 0) {
+			free(ifa.rxs);
+			free(ifa.txs);
 			endwin();
 			eprintf("can't read rx and tx bytes\n");
 		}
 	}
 
-	free(d.rxs);
-	free(d.txs);
+	free(ifa.rxs);
+	free(ifa.txs);
 	endwin();
 	return EXIT_SUCCESS;
 }
