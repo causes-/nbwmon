@@ -47,11 +47,19 @@ void usage(char *argv0) {
 
 void eprintf(const char *fmt, ...) {
 	va_list ap;
-
 	va_start(ap, fmt);
 	vfprintf(stderr, fmt, ap);
 	va_end(ap);
+	endwin();
 	exit(EXIT_FAILURE);
+}
+
+void *ecalloc(size_t nmemb, size_t size) {
+	void *p;
+	p = calloc(nmemb, size);
+	if (!p)
+		eprintf("out of memory\n");
+	return p;
 }
 
 void sighandler(int sig) {
@@ -86,12 +94,12 @@ char *detectiface(void) {
 
 void scalegraph(struct iface *ifa, int *graphlines, int fixedlines) {
 	int i, j;
-	int COLS2;
+	int colsold;
 	double *rxs;
 	double *txs;
 
 	resize = 0;
-	COLS2 = COLS;
+	colsold = COLS;
 
 	endwin();
 	refresh();
@@ -100,23 +108,14 @@ void scalegraph(struct iface *ifa, int *graphlines, int fixedlines) {
 	if (fixedlines == 0)
 		*graphlines = LINES/2-2;
 
-	if (COLS != COLS2) {
+	if (COLS != colsold) {
 		rxs = ifa->rxs;
 		txs = ifa->txs;
 
-		ifa->rxs = calloc(COLS, sizeof(double));
-		ifa->txs = calloc(COLS, sizeof(double));
+		ifa->rxs = ecalloc(COLS, sizeof(double));
+		ifa->txs = ecalloc(COLS, sizeof(double));
 
-		if (ifa->rxs == NULL || ifa->txs == NULL) {
-			free(rxs);
-			free(txs);
-			free(ifa->rxs);
-			free(ifa->txs);
-			endwin();
-			eprintf("out of memory\n");
-		}
-
-		for (i = COLS-1, j = COLS2-1; i >= 0 && j >= 0; i--, j--) {
+		for (i = COLS-1, j = colsold-1; i >= 0 && j >= 0; i--, j--) {
 			ifa->rxs[i] = rxs[j];
 			ifa->txs[i] = txs[j];
 		}
@@ -280,9 +279,7 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 		return 1;
 	}
 
-	buf = malloc(sz);
-	if (!buf)
-		eprintf("out of memory\n");
+	buf = ecalloc(1, sz);
 
 	if (sysctl(mib, 6, buf, &sz, NULL, 0) < 0) {
 		free(buf);
@@ -327,8 +324,8 @@ int getdata(struct iface *ifa, int delay, double prefix) {
 	if (ifa->rx == -1 || ifa->tx == -1)
 		return 1;
 
-	memmove(ifa->rxs, &ifa->rxs[1], sizeof ifa->rxs * (COLS-1));
-	memmove(ifa->txs, &ifa->txs[1], sizeof ifa->txs * (COLS-1));
+	memmove(ifa->rxs, ifa->rxs+1, sizeof ifa->rxs * (COLS-1));
+	memmove(ifa->txs, ifa->txs+1, sizeof ifa->txs * (COLS-1));
 
 	ifa->rxs[COLS-1] = (ifa->rx - rx) / prefix / delay;
 	ifa->txs[COLS-1] = (ifa->tx - tx) / prefix / delay;
@@ -405,15 +402,8 @@ int main(int argc, char *argv[]) {
 	if (fixedlines == 0)
 		graphlines = LINES/2-2;
 
-	ifa.rxs = calloc(COLS, sizeof(double));
-	ifa.txs = calloc(COLS, sizeof(double));
-
-	if (ifa.rxs == NULL || ifa.txs == NULL) {
-		free(ifa.rxs);
-		free(ifa.txs);
-		endwin();
-		eprintf("out of memory\n");
-	}
+	ifa.rxs = ecalloc(COLS, sizeof(double));
+	ifa.txs = ecalloc(COLS, sizeof(double));
 
 	signal(SIGWINCH, sighandler);
 
@@ -426,16 +416,10 @@ int main(int argc, char *argv[]) {
 
 		printgraph(ifa, prefix, graphlines);
 
-		if (getdata(&ifa, delay, prefix) != 0) {
-			free(ifa.rxs);
-			free(ifa.txs);
-			endwin();
+		if (getdata(&ifa, delay, prefix) != 0)
 			eprintf("can't read rx and tx bytes\n");
-		}
 	}
 
-	free(ifa.rxs);
-	free(ifa.txs);
 	endwin();
 	return EXIT_SUCCESS;
 }
