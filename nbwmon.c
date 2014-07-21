@@ -34,16 +34,6 @@ struct iface {
 
 sig_atomic_t resize = 0;
 
-void eprintf(const char *fmt, ...) {
-	va_list ap;
-
-	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
-
-	exit(EXIT_FAILURE);
-}
-
 void usage(char *argv0) {
 	fprintf(stderr, "usage: %s [options]\n", argv0);
 	fprintf(stderr, "-h             help\n");
@@ -52,6 +42,15 @@ void usage(char *argv0) {
 	fprintf(stderr, "-i <interface> network interface\n");
 	fprintf(stderr, "-d <seconds>   delay\n");
 	fprintf(stderr, "-l <lines>     graph height\n");
+	exit(EXIT_FAILURE);
+}
+
+void eprintf(const char *fmt, ...) {
+	va_list ap;
+
+	va_start(ap, fmt);
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
 	exit(EXIT_FAILURE);
 }
 
@@ -67,7 +66,7 @@ char *detectiface(void) {
 	struct ifaddrs *ifas, *ifa;
 
 	if (getifaddrs(&ifas) == -1)
-		return NULL;
+		return ifname;
 
 	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
 		if (ifa->ifa_flags & IFF_LOOPBACK)
@@ -129,13 +128,12 @@ void scalegraph(struct iface *ifa, int *graphlines, int fixedlines) {
 
 void printgraph(struct iface ifa, double prefix, int graphlines) {
 	static int y, x;
-	static double f;
 	static double rx;
 	static double tx;
 	static char *u;
 	static char unit[3][4];
 
-	if (prefix > 1000.1) {
+	if (prefix == 1024.0) {
 		strncpy(unit[0], "KiB", 4);
 		strncpy(unit[1], "MiB", 4);
 		strncpy(unit[2], "GiB", 4);
@@ -145,22 +143,21 @@ void printgraph(struct iface ifa, double prefix, int graphlines) {
 		strncpy(unit[2], "GB", 4);
 	}
 
-	mvprintw(0, COLS/2-7, "interface: %s", ifa.ifname);
-	addch('\n');
+	mvprintw(0, COLS/2-7, "interface: %s\n", ifa.ifname);
 
 	attron(COLOR_PAIR(1));
 	for (y = graphlines-1; y >= 0; y--) {
 		for (x = 0; x < COLS; x++) {
-			f = ifa.rxs[x] / ifa.graphmax * graphlines;
-			if (f > y)
+			if (ifa.rxs[x] / ifa.graphmax * graphlines > y)
 				addch('*');
 			else
-				if (x == 0) {
+				if (x != 0) {
+					addch(' ');
+				} else {
 					attroff(COLOR_PAIR(1));
 					addch('-');
 					attron(COLOR_PAIR(1));
-				} else
-					addch(' ');
+				}
 		}
 	}
 	attroff(COLOR_PAIR(1));
@@ -168,16 +165,16 @@ void printgraph(struct iface ifa, double prefix, int graphlines) {
 	attron(COLOR_PAIR(2));
 	for (y = 0; y <= graphlines-1; y++) {
 		for (x = 0; x < COLS; x++) {
-			f = ifa.txs[x] / ifa.graphmax * graphlines;
-			if (f > y)
+			if (ifa.txs[x] / ifa.graphmax * graphlines > y)
 				addch('*');
 			else
-				if (x == 0) {
+				if (x != 0) {
+					addch(' ');
+				} else {
 					attroff(COLOR_PAIR(2));
 					addch('-');
 					attron(COLOR_PAIR(2));
-				} else
-					addch(' ');
+				}
 		}
 	}
 	attroff(COLOR_PAIR(2));
@@ -243,7 +240,7 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 	*tx = -1;
 
 	if (getifaddrs(&ifas) == -1)
-		return -1;
+		return 1;
 
 	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
 		if (!strcmp(ifa->ifa_name, ifname)) {
@@ -280,7 +277,7 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 
 	if (sysctl(mib, 6, NULL, &sz, NULL, 0) < 0) {
 		free(buf);
-		return -1;
+		return 1;
 	}
 
 	buf = malloc(sz);
@@ -289,7 +286,7 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 
 	if (sysctl(mib, 6, buf, &sz, NULL, 0) < 0) {
 		free(buf);
-		return -1;
+		return 1;
 	}
 
 	for (next = buf; next < buf + sz; next += ifm->ifm_msglen) {
