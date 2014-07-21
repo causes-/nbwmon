@@ -128,9 +128,11 @@ void scalegraph(struct iface *d, int *graphlines, int fixedlines) {
 }
 
 void printgraph(struct iface d, double prefix, int graphlines) {
-	int y, x;
-	double i;
-
+	static int y, x;
+	static double f;
+	static double rx;
+	static double tx;
+	static char *u;
 	static char unit[3][4];
 
 	if (prefix > 1000.1) {
@@ -149,8 +151,8 @@ void printgraph(struct iface d, double prefix, int graphlines) {
 	attron(COLOR_PAIR(1));
 	for (y = graphlines-1; y >= 0; y--) {
 		for (x = 0; x < COLS; x++) {
-			i = d.rxs[x] / d.graphmax * graphlines;
-			if (i > y)
+			f = d.rxs[x] / d.graphmax * graphlines;
+			if (f > y)
 				addch('*');
 			else
 				if (x == 0) {
@@ -166,8 +168,8 @@ void printgraph(struct iface d, double prefix, int graphlines) {
 	attron(COLOR_PAIR(2));
 	for (y = 0; y <= graphlines-1; y++) {
 		for (x = 0; x < COLS; x++) {
-			i = d.txs[x] / d.graphmax * graphlines;
-			if (i > y)
+			f = d.txs[x] / d.graphmax * graphlines;
+			if (f > y)
 				addch('*');
 			else
 				if (x == 0) {
@@ -180,57 +182,53 @@ void printgraph(struct iface d, double prefix, int graphlines) {
 	}
 	attroff(COLOR_PAIR(2));
 
-	if (d.graphmax > prefix) {
-		mvprintw(1, 0, "%.2lf %s/s", d.graphmax / prefix, unit[1]);
-		mvprintw(graphlines, 0, "0.00 %s/s", unit[1]);
-		mvprintw(graphlines+1, 0, "0.00 %s/s", unit[1]);
-		mvprintw(graphlines*2, 0, "%.2lf %s/s", d.graphmax / prefix, unit[1]);
-	} else {
-		mvprintw(1, 0, "%.2lf %s/s", d.graphmax, unit[0]);
-		mvprintw(graphlines, 0, "0.00 %s/s", unit[0]);
-		mvprintw(graphlines+1, 0, "0.00 %s/s", unit[0]);
-		mvprintw(graphlines*2, 0, "%.2lf %s/s", d.graphmax, unit[0]);
+	u = unit[0];
+	rx = d.graphmax;
+	if (rx > prefix) {
+		u = unit[1];
+		rx /= prefix;
 	}
+	mvprintw(1, 0, "%.2lf %s/s", rx, u);
+	mvprintw(graphlines, 0, "0.00 %s/s", u);
+	mvprintw(graphlines+1, 0, "0.00 %s/s", u);
+	mvprintw(graphlines*2, 0, "%.2lf %s/s", rx, u);
 
 	for (y = graphlines*2+1; y < graphlines*2+4; y++)
 		for (x = 0; x < COLS; x++)
 			mvprintw(y, x, " ");
 
+	u = unit[0];
+	rx = d.rxs[COLS-1];
+	tx = d.txs[COLS-1];
 	if (d.rxs[COLS-1] > prefix || d.txs[COLS-1] > prefix) {
-		mvprintw(graphlines*2+1, (COLS/4)-9, "%7s %.2lf %s/s", "RX:",
-				d.rxs[COLS-1] / prefix, unit[1]);
-		mvprintw(graphlines*2+1, (COLS/4)-9+(COLS/2), "%7s %.2lf %s/s", "TX:",
-				d.txs[COLS-1] / prefix, unit[1]);
-	} else {
-		mvprintw(graphlines*2+1, (COLS/4)-9, "%7s %.2lf %s/s", "RX:",
-				d.rxs[COLS-1], unit[0]);
-		mvprintw(graphlines*2+1, (COLS/4)-9+(COLS/2), "%7s %.2lf %s/s", "TX:",
-				d.txs[COLS-1], unit[0]);
+		u = unit[1];
+		rx /= prefix;
+		tx /= prefix;
 	}
+	mvprintw(graphlines*2+1, (COLS/4)-9, "%7s %.2lf %s/s", "RX:", rx, u);
+	mvprintw(graphlines*2+1, (COLS/4)-9+(COLS/2), "%7s %.2lf %s/s", "TX:", tx, u);
 
+	u = unit[0];
+	rx = d.rxmax;
+	tx = d.txmax;
 	if (d.rxmax > prefix || d.txmax > prefix) {
-		mvprintw(graphlines*2+2, (COLS/4)-9, "%7s %.2lf %s/s", "max:",
-				d.rxmax / prefix, unit[1]);
-		mvprintw(graphlines*2+2, (COLS/4)-9+(COLS/2), "%7s %.2lf %s/s", "max:",
-				d.txmax / prefix, unit[1]);
-	} else {
-		mvprintw(graphlines*2+2, (COLS/4)-9, "%7s %.2lf %s/s", "max:",
-				d.rxmax, unit[0]);
-		mvprintw(graphlines*2+2, (COLS/4)-9+(COLS/2), "%7s %.2lf %s/s", "max:",
-				d.txmax, unit[0]);
+		u = unit[1];
+		rx /= prefix;
+		tx /= prefix;
 	}
+	mvprintw(graphlines*2+2, (COLS/4)-9, "%7s %.2lf %s/s", "max:", rx, u);
+	mvprintw(graphlines*2+2, (COLS/4)-9+(COLS/2), "%7s %.2lf %s/s", "max:", tx, u);
 
-	if (d.rx / prefix / prefix > prefix || d.tx / prefix / prefix > prefix) {
-		mvprintw(graphlines*2+3, (COLS/4)-9, "%7s %.2lf %s", "total:",
-				d.rx / prefix / prefix / prefix, unit[2]);
-		mvprintw(graphlines*2+3, (COLS/4)-9+(COLS/2), "%7s %.2lf %s", "total:",
-				d.tx / prefix / prefix / prefix, unit[2]);
-	} else {
-		mvprintw(graphlines*2+3, (COLS/4)-9, "%7s %.2lf %s", "total:",
-				d.rx / prefix / prefix, unit[1]);
-		mvprintw(graphlines*2+3, (COLS/4)-9+(COLS/2), "%7s %.2lf %s", "total:",
-				d.tx / prefix / prefix, unit[1]);
+	u = unit[1];
+	rx = d.rx / prefix / prefix;
+	tx = d.tx / prefix / prefix;
+	if (rx > prefix || tx > prefix) {
+		u = unit[2];
+		rx /= prefix;
+		tx /= prefix;
 	}
+	mvprintw(graphlines*2+3, (COLS/4)-9, "%7s %.2lf %s", "total:", rx, u);
+	mvprintw(graphlines*2+3, (COLS/4)-9+(COLS/2), "%7s %.2lf %s", "total:", tx, u);
 
 	refresh();
 }
@@ -317,8 +315,8 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 #endif
 
 int getdata(struct iface *d, int delay, double prefix) {
-	int i;
-	long long rx, tx;
+	static int i;
+	static long long rx, tx;
 
 	getcounters(d->ifname, &rx, &tx);
 	if (rx == -1 || tx == -1)
