@@ -8,19 +8,18 @@
 #include <net/if_dl.h>
 #include <net/route.h>
 #else
-#warning "your platform is not supported"
+#error "your platform is not supported"
 #endif
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
 #include <ncurses.h>
 #include <ifaddrs.h>
 #include <net/if.h>
-
-static sig_atomic_t resize = 0;
 
 struct iface {
 	char *ifname;
@@ -33,55 +32,27 @@ struct iface {
 	double *txs;
 };
 
-void arg(int argc, char *argv[], char *ifname, double *prefix, int *colors, int *delay, int *graphlines) {
-	int i;
+sig_atomic_t resize = 0;
 
-	for (i = 1; i < argc; i++) {
-		if (!strcmp("-i", argv[i])) {
-			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
-				fprintf(stderr, "error: -i needs parameter\n");
-				exit(EXIT_FAILURE);
-			} else if (strlen(argv[i+1]) > IFNAMSIZ-1) {
-				fprintf(stderr, "error: maximum interface length: %d\n", IFNAMSIZ-1);
-				exit(EXIT_FAILURE);
-			}
-			strncpy(ifname, argv[++i], IFNAMSIZ-1);
-			ifname[IFNAMSIZ-1] = '\0';
-		} else if (!strcmp("-s", argv[i])) {
-			*prefix = 1000.0;
-		} else if (!strcmp("-n", argv[i])) {
-			*colors = 0;
-		} else if (!strcmp("-d", argv[i])) {
-			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
-				fprintf(stderr, "error: -d needs parameter\n");
-				exit(EXIT_FAILURE);
-			}
-			*delay = strtol(argv[++i], NULL, 0);
-			if (*delay < 1) {
-				fprintf(stderr, "error: minimum delay: 1\n");
-				exit(EXIT_FAILURE);
-			}
-		} else if (!strcmp("-l", argv[i])) {
-			if (argv[i+1] == NULL || argv[i+1][0] == '-') {
-				fprintf(stderr, "error: -l needs parameter\n");
-				exit(EXIT_FAILURE);
-			}
-			*graphlines = strtol(argv[++i], NULL, 0);
-			if (*graphlines < 3) {
-				fprintf(stderr, "error: minimum graph height: 3\n");
-				exit(EXIT_FAILURE);
-			}
-		} else {
-			fprintf(stderr, "usage: %s [options]\n", argv[0]);
-			fprintf(stderr, "-h             help\n");
-			fprintf(stderr, "-s             use SI units\n");
-			fprintf(stderr, "-n             no colors\n");
-			fprintf(stderr, "-i <interface> network interface\n");
-			fprintf(stderr, "-d <seconds>   delay\n");
-			fprintf(stderr, "-l <lines>     graph height\n");
-			exit(EXIT_FAILURE);
-		}
-	}
+void eprintf(const char *fmt, ...) {
+	va_list ap;
+
+	va_start(ap, fmt);
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+
+	exit(EXIT_FAILURE);
+}
+
+void usage(char *argv0) {
+	fprintf(stderr, "usage: %s [options]\n", argv0);
+	fprintf(stderr, "-h             help\n");
+	fprintf(stderr, "-s             use SI units\n");
+	fprintf(stderr, "-n             no colors\n");
+	fprintf(stderr, "-i <interface> network interface\n");
+	fprintf(stderr, "-d <seconds>   delay\n");
+	fprintf(stderr, "-l <lines>     graph height\n");
+	exit(EXIT_FAILURE);
 }
 
 void sighandler(int sig) {
@@ -143,8 +114,7 @@ void scalegraph(struct iface *d, int *graphlines, int fixedlines) {
 			free(d->rxs);
 			free(d->txs);
 			endwin();
-			fprintf(stderr, "error: out of memory\n");
-			exit(EXIT_FAILURE);
+			eprintf("out of memory\n");
 		}
 
 		for (i = COLS-1, j = COLS2-1; i >= 0 && j >= 0; i--, j--) {
@@ -316,10 +286,8 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 	}
 
 	buf = malloc(sz);
-	if (!buf) {
-		fprintf(stderr, "error: out of memory\n");
-		exit(EXIT_FAILURE);
-	}
+	if (!buf)
+		eprintf("out of memory\n");
 
 	if (sysctl(mib, 6, buf, &sz, NULL, 0) < 0) {
 		free(buf);
@@ -389,32 +357,46 @@ int getdata(struct iface *d, int delay, double prefix) {
 }
 
 int main(int argc, char *argv[]) {
+	unsigned int i;
 	int colors = 1;
 	int delay = 1;
-	int fixedlines = 0;
 	int graphlines = 0;
+	int fixedlines = 0;
 	double prefix = 1024.0;
 	char key;
 
-	struct iface d = {
-		.rx = 0,
-		.tx = 0,
-		.rxmax = 0,
-		.txmax = 0,
-		.graphmax = 0
-	};
+	struct iface d;
+
+	memset(&d, 0, sizeof d);
 
 	d.ifname = detectiface();
 
-	arg(argc, argv, d.ifname, &prefix, &colors, &delay, &graphlines);
-
-	if (graphlines != 0)
-		fixedlines = 1;
-
-	if (!strcmp(d.ifname, "")) {
-		fprintf(stderr, "error: can't find network interface\n");
-		return EXIT_FAILURE;
+	for (i = 1; i < argc; i++) {
+		if (!strcmp("-s", argv[i])) {
+			prefix = 1000.0;
+		} else if (!strcmp("-n", argv[i])) {
+			colors = 0;
+		} else if (argv[i+1] == NULL || argv[i+1][0] == '-') {
+			usage(argv[0]);
+		} else if (!strcmp("-i", argv[i])) {
+			if (strlen(argv[i+1]) > IFNAMSIZ-1)
+				eprintf("maximum interface length: %d\n", IFNAMSIZ-1);
+			strncpy(d.ifname, argv[++i], IFNAMSIZ-1);
+			d.ifname[IFNAMSIZ-1] = '\0';
+		} else if (!strcmp("-d", argv[i])) {
+			delay = strtol(argv[++i], NULL, 10);
+			if (delay < 1)
+				eprintf("minimum delay: 1\n");
+		} else if (!strcmp("-l", argv[i])) {
+			graphlines = strtol(argv[++i], NULL, 10);
+			fixedlines = 1;
+			if (graphlines < 3)
+				eprintf("minimum graph height: 3\n");
+		}
 	}
+
+	if (d.ifname[0] == '\0')
+		eprintf("can't detect network interface\n");
 
 	initscr();
 	curs_set(0);
@@ -437,8 +419,7 @@ int main(int argc, char *argv[]) {
 		free(d.rxs);
 		free(d.txs);
 		endwin();
-		fprintf(stderr, "error: out of memory\n");
-		return EXIT_FAILURE;
+		eprintf("out of memory\n");
 	}
 
 	signal(SIGWINCH, sighandler);
@@ -456,8 +437,7 @@ int main(int argc, char *argv[]) {
 			free(d.rxs);
 			free(d.txs);
 			endwin();
-			fprintf(stderr, "error: can't read rx and tx bytes\n");
-			return EXIT_SUCCESS;
+			eprintf("can't read rx and tx bytes\n");
 		}
 	}
 
