@@ -327,10 +327,8 @@ int getdata(struct iface *ifa, int delay, double prefix) {
 	if (ifa->rx == -1 || ifa->tx == -1)
 		return 1;
 
-	for (i = 0; i < COLS-1; i++) {
-		ifa->rxs[i] = ifa->rxs[i+1];
-		ifa->txs[i] = ifa->txs[i+1];
-	}
+	memmove(ifa->rxs, &ifa->rxs[1], sizeof ifa->rxs * (COLS-1));
+	memmove(ifa->txs, &ifa->txs[1], sizeof ifa->txs * (COLS-1));
 
 	ifa->rxs[COLS-1] = (ifa->rx - rx) / prefix / delay;
 	ifa->txs[COLS-1] = (ifa->tx - tx) / prefix / delay;
