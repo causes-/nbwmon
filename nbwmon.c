@@ -47,10 +47,10 @@ void usage(char *argv0) {
 
 void eprintf(const char *fmt, ...) {
 	va_list ap;
+	endwin();
 	va_start(ap, fmt);
 	vfprintf(stderr, fmt, ap);
 	va_end(ap);
-	endwin();
 	exit(EXIT_FAILURE);
 }
 
@@ -75,7 +75,6 @@ char *detectiface(void) {
 
 	if (getifaddrs(&ifas) == -1)
 		return ifname;
-
 	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
 		if (ifa->ifa_flags & IFF_LOOPBACK)
 			continue;
@@ -87,8 +86,8 @@ char *detectiface(void) {
 		ifname[IFNAMSIZ-1] = '\0';
 		break;
 	}
-
 	freeifaddrs(ifas);
+
 	return ifname;
 }
 
@@ -240,7 +239,6 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 
 	if (getifaddrs(&ifas) == -1)
 		return 1;
-
 	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
 		if (!strcmp(ifa->ifa_name, ifname)) {
 			family = ifa->ifa_addr->sa_family;
@@ -251,8 +249,10 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 			}
 		}
 	}
-
 	freeifaddrs(ifas);
+
+	if (*rx == -1 || *tx == -1)
+		return 1;
 	return 0;
 }
 
@@ -302,8 +302,10 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 			}
 		}
 	}
-
 	free(buf);
+
+	if (*rx == -1 || *tx == -1)
+		return 1;
 	return 0;
 }
 #endif
@@ -312,16 +314,12 @@ int getdata(struct iface *ifa, int delay, double prefix) {
 	static int i;
 	static long long rx, tx;
 
-	getcounters(ifa->ifname, &rx, &tx);
-	if (rx == -1 || tx == -1)
+	if (getcounters(ifa->ifname, &rx, &tx) != 0)
 		return 1;
-
 	sleep(delay);
 	if (resize)
 		return 0;
-
-	getcounters(ifa->ifname, &ifa->rx, &ifa->tx);
-	if (ifa->rx == -1 || ifa->tx == -1)
+	if (getcounters(ifa->ifname, &ifa->rx, &ifa->tx) != 0)
 		return 1;
 
 	memmove(ifa->rxs, ifa->rxs+1, sizeof ifa->rxs * (COLS-1));
@@ -354,21 +352,19 @@ int main(int argc, char *argv[]) {
 	int fixedlines = 0;
 	double prefix = 1024.0;
 	char key;
-
 	struct iface ifa;
 
 	memset(&ifa, 0, sizeof ifa);
-
 	ifa.ifname = detectiface();
 
 	for (i = 1; i < argc; i++) {
-		if (!strcmp("-s", argv[i])) {
+		if (!strcmp("-s", argv[i]))
 			prefix = 1000.0;
-		} else if (!strcmp("-n", argv[i])) {
+		else if (!strcmp("-n", argv[i]))
 			colors = 0;
-		} else if (argv[i+1] == NULL || argv[i+1][0] == '-') {
+		else if (argv[i+1] == NULL || argv[i+1][0] == '-')
 			usage(argv[0]);
-		} else if (!strcmp("-i", argv[i])) {
+		else if (!strcmp("-i", argv[i])) {
 			if (strlen(argv[i+1]) > IFNAMSIZ-1)
 				eprintf("maximum interface length: %d\n", IFNAMSIZ-1);
 			strncpy(ifa.ifname, argv[++i], IFNAMSIZ-1);
@@ -379,9 +375,9 @@ int main(int argc, char *argv[]) {
 				eprintf("minimum delay: 1\n");
 		} else if (!strcmp("-l", argv[i])) {
 			graphlines = strtol(argv[++i], NULL, 10);
-			fixedlines = 1;
 			if (graphlines < 3)
 				eprintf("minimum graph height: 3\n");
+			fixedlines = 1;
 		}
 	}
 
@@ -413,9 +409,7 @@ int main(int argc, char *argv[]) {
 			break;
 		else if (key == 'r' || resize)
 			scalegraph(&ifa, &graphlines, fixedlines);
-
 		printgraph(ifa, prefix, graphlines);
-
 		if (getdata(&ifa, delay, prefix) != 0)
 			eprintf("can't read rx and tx bytes\n");
 	}
