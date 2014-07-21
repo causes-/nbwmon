@@ -124,22 +124,34 @@ void scalegraph(struct iface *ifa, int *graphlines, int fixedlines) {
 	}
 }
 
-void printgraph(struct iface ifa, double prefix, int graphlines) {
-	static int y, x;
-	static double rx;
-	static double tx;
-	static char *u;
+void amvprintw(int y, int x, double prefix, int pad, char *str, double rx, char *str2) {
+	static int i;
 	static char unit[3][4];
+	static char *u;
 
 	if (prefix == 1024.0) {
 		strncpy(unit[0], "KiB", 4);
 		strncpy(unit[1], "MiB", 4);
 		strncpy(unit[2], "GiB", 4);
+		strncpy(unit[3], "TiB", 4);
 	} else {
 		strncpy(unit[0], "kB", 4);
 		strncpy(unit[1], "MB", 4);
 		strncpy(unit[2], "GB", 4);
+		strncpy(unit[3], "TB", 4);
 	}
+
+	u = unit[0];
+	for (i = 1; rx > prefix && i < 4; i++) {
+		u = unit[i];
+		rx /= prefix;
+	}
+
+	mvprintw(y, x, "%*s%.2lf %s%s", pad, str, rx, u, str2);
+}
+
+void printgraph(struct iface ifa, double prefix, int graphlines) {
+	static int y, x;
 
 	mvprintw(0, COLS/2-7, "interface: %s\n", ifa.ifname);
 
@@ -177,53 +189,23 @@ void printgraph(struct iface ifa, double prefix, int graphlines) {
 	}
 	attroff(COLOR_PAIR(2));
 
-	u = unit[0];
-	rx = ifa.graphmax;
-	if (rx > prefix) {
-		u = unit[1];
-		rx /= prefix;
-	}
-	mvprintw(1, 0, "%.2lf %s/s", rx, u);
-	mvprintw(graphlines, 0, "0.00 %s/s", u);
-	mvprintw(graphlines+1, 0, "0.00 %s/s", u);
-	mvprintw(graphlines*2, 0, "%.2lf %s/s", rx, u);
+	amvprintw(1, 0, prefix, 0, "", ifa.graphmax, "/s");
+	amvprintw(graphlines, 0, prefix, 0, "", 0.00, "/s");
+	amvprintw(graphlines+1, 0, prefix, 0, "", 0.00, "/s");
+	amvprintw(graphlines*2, 0, prefix, 0, "", ifa.graphmax, "/s");
 
 	for (y = graphlines*2+1; y < graphlines*2+4; y++)
 		for (x = 0; x < COLS; x++)
 			mvprintw(y, x, " ");
 
-	u = unit[0];
-	rx = ifa.rxs[COLS-1];
-	tx = ifa.txs[COLS-1];
-	if (rx > prefix || tx > prefix) {
-		u = unit[1];
-		rx /= prefix;
-		tx /= prefix;
-	}
-	mvprintw(graphlines*2+1, (COLS/4)-9, "%7s %.2lf %s/s", "RX:", rx, u);
-	mvprintw(graphlines*2+1, (COLS/4)-9+(COLS/2), "%7s %.2lf %s/s", "TX:", tx, u);
+	amvprintw(graphlines*2+1, (COLS/4)-9, prefix, 7, "RX: ", ifa.rxs[COLS-1], "/s");
+	amvprintw(graphlines*2+1, (COLS/4)-9+(COLS/2), prefix, 7, "TX: ", ifa.txs[COLS-1], "/s");
 
-	u = unit[0];
-	rx = ifa.rxmax;
-	tx = ifa.txmax;
-	if (rx > prefix || tx > prefix) {
-		u = unit[1];
-		rx /= prefix;
-		tx /= prefix;
-	}
-	mvprintw(graphlines*2+2, (COLS/4)-9, "%7s %.2lf %s/s", "max:", rx, u);
-	mvprintw(graphlines*2+2, (COLS/4)-9+(COLS/2), "%7s %.2lf %s/s", "max:", tx, u);
+	amvprintw(graphlines*2+2, (COLS/4)-9, prefix, 7, "max: ", ifa.rxmax, "/s");
+	amvprintw(graphlines*2+2, (COLS/4)-9+(COLS/2), prefix, 7, "max: ", ifa.txmax, "/s");
 
-	u = unit[1];
-	rx = ifa.rx / prefix / prefix;
-	tx = ifa.tx / prefix / prefix;
-	if (rx > prefix || tx > prefix) {
-		u = unit[2];
-		rx /= prefix;
-		tx /= prefix;
-	}
-	mvprintw(graphlines*2+3, (COLS/4)-9, "%7s %.2lf %s", "total:", rx, u);
-	mvprintw(graphlines*2+3, (COLS/4)-9+(COLS/2), "%7s %.2lf %s", "total:", tx, u);
+	amvprintw(graphlines*2+3, (COLS/4)-9, prefix, 7, "total: ", ifa.rx / 1024, "");
+	amvprintw(graphlines*2+3, (COLS/4)-9+(COLS/2), prefix, 7, "total: ", ifa.tx / 1024, "");
 
 	refresh();
 }
