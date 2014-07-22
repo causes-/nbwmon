@@ -124,30 +124,22 @@ void scalegraph(struct iface *ifa, int *graphlines, int fixedlines) {
 	}
 }
 
-void amvprintw(int y, int x, double prefix, int pad, char *str, double rx, char *str2) {
-	static int i;
-	static char unit[3][4];
-	static char *u;
+void amvprintw(int y, int x, double prefix, int pad, char *name, double rx, char *end) {
+	static int i, j;
+	static const char *u;
+	static const char unit[2][4][4] = {
+		{ "kB", "MB", "GB", "TB" },
+		{ "KiB", "MiB", "GiB", "TiB" }
+	};
 
-	if (prefix == 1024.0) {
-		strncpy(unit[0], "KiB", 4);
-		strncpy(unit[1], "MiB", 4);
-		strncpy(unit[2], "GiB", 4);
-		strncpy(unit[3], "TiB", 4);
-	} else {
-		strncpy(unit[0], "kB", 4);
-		strncpy(unit[1], "MB", 4);
-		strncpy(unit[2], "GB", 4);
-		strncpy(unit[3], "TB", 4);
-	}
-
-	u = unit[0];
+	j = (prefix == 1024.0);
+	u = unit[j][0];
 	for (i = 1; rx > prefix && i < 4; i++) {
-		u = unit[i];
+		u = unit[j][i];
 		rx /= prefix;
 	}
 
-	mvprintw(y, x, "%*s%.2lf %s%s", pad, str, rx, u, str2);
+	mvprintw(y, x, "%*s%.2lf %s%s", pad, name, rx, u, end);
 }
 
 void printgraph(struct iface ifa, double prefix, int graphlines) {
@@ -198,14 +190,14 @@ void printgraph(struct iface ifa, double prefix, int graphlines) {
 		for (x = 0; x < COLS; x++)
 			mvprintw(y, x, " ");
 
-	amvprintw(graphlines*2+1, (COLS/4)-9, prefix, 7, "RX: ", ifa.rxs[COLS-1], "/s");
-	amvprintw(graphlines*2+1, (COLS/4)-9+(COLS/2), prefix, 7, "TX: ", ifa.txs[COLS-1], "/s");
+	amvprintw(graphlines*2+1, (COLS/4)-7, prefix, 7, "RX: ", ifa.rxs[COLS-1], "/s");
+	amvprintw(graphlines*2+1, (COLS/4)-7+(COLS/2), prefix, 7, "TX: ", ifa.txs[COLS-1], "/s");
 
-	amvprintw(graphlines*2+2, (COLS/4)-9, prefix, 7, "max: ", ifa.rxmax, "/s");
-	amvprintw(graphlines*2+2, (COLS/4)-9+(COLS/2), prefix, 7, "max: ", ifa.txmax, "/s");
+	amvprintw(graphlines*2+2, (COLS/4)-7, prefix, 7, "max: ", ifa.rxmax, "/s");
+	amvprintw(graphlines*2+2, (COLS/4)-7+(COLS/2), prefix, 7, "max: ", ifa.txmax, "/s");
 
-	amvprintw(graphlines*2+3, (COLS/4)-9, prefix, 7, "total: ", ifa.rx / 1024, "");
-	amvprintw(graphlines*2+3, (COLS/4)-9+(COLS/2), prefix, 7, "total: ", ifa.tx / 1024, "");
+	amvprintw(graphlines*2+3, (COLS/4)-7, prefix, 7, "total: ", ifa.rx / 1024, "");
+	amvprintw(graphlines*2+3, (COLS/4)-7+(COLS/2), prefix, 7, "total: ", ifa.tx / 1024, "");
 
 	refresh();
 }
