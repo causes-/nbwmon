@@ -25,11 +25,11 @@ struct iface {
 	char *ifname;
 	long long rx;
 	long long tx;
+	double *rxs;
+	double *txs;
 	double rxmax;
 	double txmax;
 	double graphmax;
-	double *rxs;
-	double *txs;
 };
 
 sig_atomic_t resize = 0;
@@ -124,22 +124,22 @@ void scalegraph(struct iface *ifa, int *graphlines, int fixedlines) {
 	}
 }
 
-void amvprintw(int y, int x, double prefix, int pad, char *name, double rx, char *end) {
+void amvprintw(int y, int x, double prefix, int pad, char *name, double r, char *end) {
 	static int i, j;
 	static const char *u;
-	static const char unit[2][4][4] = {
-		{ "kB", "MB", "GB", "TB" },
-		{ "KiB", "MiB", "GiB", "TiB" }
+	static const char units[2][8][4] = {
+		{ "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" },
+		{ "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" }
 	};
 
 	j = (prefix == 1024.0);
-	u = unit[j][0];
-	for (i = 1; rx > prefix && i < 4; i++) {
-		u = unit[j][i];
-		rx /= prefix;
+	u = units[j][0];
+	for (i = 1; r > prefix && i < 8; i++) {
+		u = units[j][i];
+		r /= prefix;
 	}
 
-	mvprintw(y, x, "%*s%.2lf %s%s", pad, name, rx, u, end);
+	mvprintw(y, x, "%*s%.2lf %s%s", pad, name, r, u, end);
 }
 
 void printgraph(struct iface ifa, double prefix, int graphlines) {
@@ -302,6 +302,11 @@ int getdata(struct iface *ifa, int delay, double prefix) {
 	ifa->rxs[COLS-1] = (ifa->rx - rx) / prefix / delay;
 	ifa->txs[COLS-1] = (ifa->tx - tx) / prefix / delay;
 
+	if (ifa->rxs[COLS-1] > ifa->rxmax)
+		ifa->rxmax = ifa->rxs[COLS-1];
+	if (ifa->txs[COLS-1] > ifa->txmax)
+		ifa->txmax = ifa->txs[COLS-1];
+
 	ifa->graphmax = 0;
 	for (i = 0; i < COLS; i++) {
 		if (ifa->rxs[i] > ifa->graphmax)
@@ -309,11 +314,6 @@ int getdata(struct iface *ifa, int delay, double prefix) {
 		if (ifa->txs[i] > ifa->graphmax)
 			ifa->graphmax = ifa->txs[i];
 	}
-
-	if (ifa->rxs[COLS-1] > ifa->rxmax)
-		ifa->rxmax = ifa->rxs[COLS-1];
-	if (ifa->txs[COLS-1] > ifa->txmax)
-		ifa->txmax = ifa->txs[COLS-1];
 
 	return 0;
 }
