@@ -32,18 +32,7 @@ struct iface {
 	double graphmax;
 };
 
-sig_atomic_t resize = 0;
-
-void usage(char *argv0) {
-	fprintf(stderr, "usage: %s [options]\n", argv0);
-	fprintf(stderr, "-h             help\n");
-	fprintf(stderr, "-s             use SI units\n");
-	fprintf(stderr, "-n             no colors\n");
-	fprintf(stderr, "-i <interface> network interface\n");
-	fprintf(stderr, "-d <seconds>   delay\n");
-	fprintf(stderr, "-l <lines>     graph height\n");
-	exit(EXIT_FAILURE);
-}
+static sig_atomic_t resize;
 
 void eprintf(const char *fmt, ...) {
 	va_list ap;
@@ -121,8 +110,8 @@ void scalegraph(struct iface *ifa, int *graphlines, int fixedlines) {
 	}
 }
 
-void scaledata(double prefix, double in, double *data, const char **unitp) {
-	static int i;
+void scaledata(double prefix, double in, double *data, const char **unit) {
+	int i;
 	static const char units[2][8][4] = {
 		{ "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" },
 		{ "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" }
@@ -130,15 +119,15 @@ void scaledata(double prefix, double in, double *data, const char **unitp) {
 	*data = in;
 	for (i = 0; *data > prefix && i < 7; i++)
 		*data /= prefix;
-	*unitp = units[prefix==1024.0][i];
+	*unit = units[prefix==1024.0][i];
 }
 
 void printgraph(struct iface ifa, double prefix, int graphlines) {
-	static int y, x;
-	static int coll, colr;
-	static double data;
-	static const char *unit;
-	static char *fmt;
+	int y, x;
+	int coll, colr;
+	double data;
+	const char *unit;
+	char *fmt;
 
 	mvprintw(0, COLS/2-7, "interface: %s\n", ifa.ifname);
 
@@ -147,14 +136,12 @@ void printgraph(struct iface ifa, double prefix, int graphlines) {
 		for (x = 0; x < COLS; x++) {
 			if (ifa.rxs[x] / ifa.graphmax * graphlines > y)
 				addch('*');
-			else
-				if (x != 0) {
-					addch(' ');
-				} else {
-					attroff(COLOR_PAIR(1));
-					addch('-');
-					attron(COLOR_PAIR(1));
-				}
+			else if (x == 0) {
+				attroff(COLOR_PAIR(1));
+				addch('-');
+				attron(COLOR_PAIR(1));
+			} else
+				addch(' ');
 		}
 	}
 	attroff(COLOR_PAIR(1));
@@ -164,20 +151,19 @@ void printgraph(struct iface ifa, double prefix, int graphlines) {
 		for (x = 0; x < COLS; x++) {
 			if (ifa.txs[x] / ifa.graphmax * graphlines > y)
 				addch('*');
-			else
-				if (x != 0) {
-					addch(' ');
-				} else {
-					attroff(COLOR_PAIR(2));
-					addch('-');
-					attron(COLOR_PAIR(2));
-				}
+			else if (x == 0) {
+				attroff(COLOR_PAIR(2));
+				addch('-');
+				attron(COLOR_PAIR(2));
+			} else
+				addch(' ');
 		}
 	}
 	attroff(COLOR_PAIR(2));
 
 	fmt = "%.2f %s/s";
 	scaledata(prefix, ifa.graphmax, &data, &unit);
+
 	mvprintw(1, 0, fmt, data, unit);
 	mvprintw(graphlines, 0, fmt, 0.0, unit);
 	mvprintw(graphlines+1, 0, fmt, 0.0, unit);
@@ -185,7 +171,7 @@ void printgraph(struct iface ifa, double prefix, int graphlines) {
 
 	fmt = "%6s %.2f %s/s\t"; /* /t to clear after str */
 	coll = COLS / 4 - 8;
-	colr = coll + 1 + COLS / 2;
+	colr = coll + COLS / 2 + 1;
 
 	scaledata(prefix, ifa.rxs[COLS-1], &data, &unit);
 	mvprintw(graphlines*2+1, coll, fmt, "RX:", data, unit);
@@ -319,7 +305,7 @@ int getdata(struct iface *ifa, int delay, double prefix) {
 }
 
 int main(int argc, char *argv[]) {
-	unsigned int i;
+	int i;
 	int colors = 1;
 	int delay = 1;
 	int fixedlines = 0;
@@ -336,7 +322,13 @@ int main(int argc, char *argv[]) {
 		else if (!strcmp("-n", argv[i]))
 			colors = 0;
 		else if (argv[i+1] == NULL || argv[i+1][0] == '-')
-			usage(argv[0]);
+			eprintf("usage: %s [options]\n"
+					"-h             help\n"
+					"-s             use SI units\n"
+					"-n             no colors\n"
+					"-i <interface> network interface\n"
+					"-d <seconds>   delay\n"
+					"-l <lines>     graph height\n", argv[0]);
 		else if (!strcmp("-i", argv[i])) {
 			strncpy(ifa.ifname, argv[++i], IFNAMSIZ-1);
 			ifa.ifname[IFNAMSIZ-1] = '\0';
@@ -368,13 +360,13 @@ int main(int argc, char *argv[]) {
 		init_pair(2, COLOR_RED, -1);
 	}
 
-	if (fixedlines == 0)
-		graphlines = LINES/2-2;
-
 	ifa.rxs = ecalloc(COLS, sizeof(double));
 	ifa.txs = ecalloc(COLS, sizeof(double));
 
 	signal(SIGWINCH, sighandler);
+
+	if (fixedlines == 0)
+		graphlines = LINES/2-2;
 
 	while (1) {
 		key = getch();
