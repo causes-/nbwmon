@@ -22,7 +22,7 @@
 #include <net/if.h>
 
 struct iface {
-	char *ifname;
+	char ifname[IFNAMSIZ];
 	long long rx;
 	long long tx;
 	double *rxs;
@@ -69,12 +69,11 @@ void sighandler(int sig) {
 	}
 }
 
-char *detectiface(void) {
-	static char ifname[IFNAMSIZ];
+void detectiface(char *ifname) {
 	struct ifaddrs *ifas, *ifa;
 
 	if (getifaddrs(&ifas) == -1)
-		return ifname;
+		return;
 	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
 		if (ifa->ifa_flags & IFF_LOOPBACK)
 			continue;
@@ -87,8 +86,6 @@ char *detectiface(void) {
 		break;
 	}
 	freeifaddrs(ifas);
-
-	return ifname;
 }
 
 void scalegraph(struct iface *ifa, int *graphlines, int fixedlines) {
@@ -124,22 +121,24 @@ void scalegraph(struct iface *ifa, int *graphlines, int fixedlines) {
 	}
 }
 
-void amvprintw(int y, int x, double prefix, int pad, char *name, double t, char *end) {
+void scaledata(double prefix, double in, double *data, const char **unitp) {
 	static int i;
-	static const char *u;
 	static const char units[2][8][4] = {
 		{ "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" },
 		{ "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" }
 	};
-
-	for (i = 0; t > prefix && i < 7; i++)
-		t /= prefix;
-	u = units[prefix==1024.0][i];
-	mvprintw(y, x, "%*s%.2f %s%s", pad, name, t, u, end);
+	*data = in;
+	for (i = 0; *data > prefix && i < 7; i++)
+		*data /= prefix;
+	*unitp = units[prefix==1024.0][i];
 }
 
 void printgraph(struct iface ifa, double prefix, int graphlines) {
 	static int y, x;
+	static int coll, colr;
+	static double data;
+	static const char *unit;
+	static char *fmt;
 
 	mvprintw(0, COLS/2-7, "interface: %s\n", ifa.ifname);
 
@@ -177,23 +176,31 @@ void printgraph(struct iface ifa, double prefix, int graphlines) {
 	}
 	attroff(COLOR_PAIR(2));
 
-	amvprintw(1, 0, prefix, 0, "", ifa.graphmax, "/s");
-	amvprintw(graphlines, 0, prefix, 0, "", 0.00, "/s");
-	amvprintw(graphlines+1, 0, prefix, 0, "", 0.00, "/s");
-	amvprintw(graphlines*2, 0, prefix, 0, "", ifa.graphmax, "/s");
+	fmt = "%.2f %s/s";
+	scaledata(prefix, ifa.graphmax, &data, &unit);
+	mvprintw(1, 0, fmt, data, unit);
+	mvprintw(graphlines, 0, fmt, 0.0, unit);
+	mvprintw(graphlines+1, 0, fmt, 0.0, unit);
+	mvprintw(graphlines*2, 0, fmt, data, unit);
 
-	for (y = graphlines*2+1; y < graphlines*2+4; y++)
-		for (x = 0; x < COLS; x++)
-			mvprintw(y, x, " ");
+	fmt = "%6s %.2f %s/s\t"; /* /t to clear after str */
+	coll = COLS / 4 - 8;
+	colr = coll + 1 + COLS / 2;
 
-	amvprintw(graphlines*2+1, (COLS/4)-7, prefix, 7, "RX: ", ifa.rxs[COLS-1], "/s");
-	amvprintw(graphlines*2+1, (COLS/4)-7+(COLS/2), prefix, 7, "TX: ", ifa.txs[COLS-1], "/s");
+	scaledata(prefix, ifa.rxs[COLS-1], &data, &unit);
+	mvprintw(graphlines*2+1, coll, fmt, "RX:", data, unit);
+	scaledata(prefix, ifa.txs[COLS-1], &data, &unit);
+	mvprintw(graphlines*2+1, colr, fmt, "TX:", data, unit);
 
-	amvprintw(graphlines*2+2, (COLS/4)-7, prefix, 7, "max: ", ifa.rxmax, "/s");
-	amvprintw(graphlines*2+2, (COLS/4)-7+(COLS/2), prefix, 7, "max: ", ifa.txmax, "/s");
+	scaledata(prefix, ifa.rxmax, &data, &unit);
+	mvprintw(graphlines*2+2, coll, fmt, "max:", data, unit);
+	scaledata(prefix, ifa.txmax, &data, &unit);
+	mvprintw(graphlines*2+2, colr, fmt, "max:", data, unit);
 
-	amvprintw(graphlines*2+3, (COLS/4)-7, prefix, 7, "total: ", ifa.rx / 1024, "");
-	amvprintw(graphlines*2+3, (COLS/4)-7+(COLS/2), prefix, 7, "total: ", ifa.tx / 1024, "");
+	scaledata(prefix, ifa.rx / 1024, &data, &unit);
+	mvprintw(graphlines*2+3, coll, fmt, "total:", data, unit);
+	scaledata(prefix, ifa.tx / 1024, &data, &unit);
+	mvprintw(graphlines*2+3, colr, fmt, "total:", data, unit);
 
 	refresh();
 }
@@ -202,7 +209,6 @@ void printgraph(struct iface ifa, double prefix, int graphlines) {
 int getcounters(char *ifname, long long *rx, long long *tx) {
 	struct ifaddrs *ifas, *ifa;
 	struct rtnl_link_stats *stats;
-	int family;
 
 	*rx = -1;
 	*tx = -1;
@@ -211,8 +217,7 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 		return 1;
 	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
 		if (!strcmp(ifa->ifa_name, ifname)) {
-			family = ifa->ifa_addr->sa_family;
-			if (family == AF_PACKET && ifa->ifa_data != NULL) {
+			if (ifa->ifa_addr->sa_family == AF_PACKET && ifa->ifa_data != NULL) {
 				stats = ifa->ifa_data;
 				*rx = stats->rx_bytes;
 				*tx = stats->tx_bytes;
@@ -250,7 +255,6 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 	}
 
 	buf = ecalloc(1, sz);
-
 	if (sysctl(mib, 6, buf, &sz, NULL, 0) < 0) {
 		free(buf);
 		return 1;
@@ -325,7 +329,6 @@ int main(int argc, char *argv[]) {
 	struct iface ifa;
 
 	memset(&ifa, 0, sizeof ifa);
-	ifa.ifname = detectiface();
 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp("-s", argv[i]))
@@ -349,6 +352,8 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+	if (ifa.ifname[0] == '\0')
+		detectiface(ifa.ifname);
 	if (ifa.ifname[0] == '\0')
 		eprintf("can't detect network interface\n");
 
