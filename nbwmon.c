@@ -124,22 +124,18 @@ void scalegraph(struct iface *ifa, int *graphlines, int fixedlines) {
 	}
 }
 
-void amvprintw(int y, int x, double prefix, int pad, char *name, double r, char *end) {
-	static int i, j;
+void amvprintw(int y, int x, double prefix, int pad, char *name, double t, char *end) {
+	static int i;
 	static const char *u;
 	static const char units[2][8][4] = {
 		{ "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" },
 		{ "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" }
 	};
 
-	j = (prefix == 1024.0);
-	u = units[j][0];
-	for (i = 1; r > prefix && i < 8; i++) {
-		u = units[j][i];
-		r /= prefix;
-	}
-
-	mvprintw(y, x, "%*s%.2lf %s%s", pad, name, r, u, end);
+	for (i = 0; t > prefix && i < 7; i++)
+		t /= prefix;
+	u = units[prefix==1024.0][i];
+	mvprintw(y, x, "%*s%.2f %s%s", pad, name, t, u, end);
 }
 
 void printgraph(struct iface ifa, double prefix, int graphlines) {
@@ -322,8 +318,8 @@ int main(int argc, char *argv[]) {
 	unsigned int i;
 	int colors = 1;
 	int delay = 1;
-	int graphlines = 0;
 	int fixedlines = 0;
+	int graphlines = 0;
 	double prefix = 1024.0;
 	char key;
 	struct iface ifa;
@@ -339,8 +335,6 @@ int main(int argc, char *argv[]) {
 		else if (argv[i+1] == NULL || argv[i+1][0] == '-')
 			usage(argv[0]);
 		else if (!strcmp("-i", argv[i])) {
-			if (strlen(argv[i+1]) > IFNAMSIZ-1)
-				eprintf("maximum interface length: %d\n", IFNAMSIZ-1);
 			strncpy(ifa.ifname, argv[++i], IFNAMSIZ-1);
 			ifa.ifname[IFNAMSIZ-1] = '\0';
 		} else if (!strcmp("-d", argv[i])) {
