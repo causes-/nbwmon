@@ -54,6 +54,12 @@ void *ecalloc(size_t nmemb, size_t size) {
 	return p;
 }
 
+char *astrncpy(char *dest, const char *src, size_t n) {
+	strncpy(dest, src, n-1);
+	dest[n] = '\0';
+	return dest;
+}
+
 void sighandler(int sig) {
 	if (sig == SIGWINCH) {
 		resize = 1;
@@ -73,8 +79,7 @@ void detectiface(char *ifname) {
 			continue;
 		else if (!(ifa->ifa_flags & IFF_UP))
 			continue;
-		strncpy(ifname, ifa->ifa_name, IFNAMSIZ - 1);
-		ifname[IFNAMSIZ-1] = '\0';
+		astrncpy(ifname, ifa->ifa_name, IFNAMSIZ-1);
 		break;
 	}
 	freeifaddrs(ifas);
@@ -104,7 +109,6 @@ void scalegraph(struct iface *ifa, int *graphlines, int opts) {
 			ifa->rxs[i] = rxs[j];
 			ifa->txs[i] = txs[j];
 		}
-
 		free(rxs);
 		free(txs);
 	}
@@ -126,7 +130,7 @@ void scaledata(double raw, int opts, double *data, const char **unit) {
 
 void printgraph(struct iface ifa, int graphlines, int opts) {
 	int y, x;
-	int coll, colr;
+	int colrx, coltx;
 	double data;
 	const char *unit;
 	char *fmt;
@@ -150,9 +154,8 @@ void printgraph(struct iface ifa, int graphlines, int opts) {
 		}
 	}
 	attroff(COLOR_PAIR(1));
-
 	attron(COLOR_PAIR(2));
-	for (y = 0; y <= graphlines-1; y++) {
+	for (y = 0; y < graphlines; y++) {
 		for (x = 0; x < COLS; x++) {
 			if (ifa.txs[x] / ifa.graphmax * graphlines > y)
 				addch('*');
@@ -168,30 +171,28 @@ void printgraph(struct iface ifa, int graphlines, int opts) {
 
 	fmt = "%.2f %s/s";
 	scaledata(ifa.graphmax, opts, &data, &unit);
-
 	mvprintw(1, 0, fmt, data, unit);
 	mvprintw(graphlines, 0, fmt, 0.0, unit);
 	mvprintw(graphlines+1, 0, fmt, 0.0, unit);
 	mvprintw(graphlines*2, 0, fmt, data, unit);
 
 	fmt = "%6s %.2f %s/s\t"; /* clear overflowing chars with /t */
-	coll = COLS / 4 - 8;
-	colr = coll + COLS / 2 + 1;
-
+	colrx = COLS / 4 - 8;
+	coltx = colrx + COLS / 2 + 1;
 	scaledata(ifa.rxs[COLS-1], opts, &data, &unit);
-	mvprintw(graphlines*2+1, coll, fmt, "RX:", data, unit);
+	mvprintw(graphlines*2+1, colrx, fmt, "RX:", data, unit);
 	scaledata(ifa.txs[COLS-1], opts, &data, &unit);
-	mvprintw(graphlines*2+1, colr, fmt, "TX:", data, unit);
+	mvprintw(graphlines*2+1, coltx, fmt, "TX:", data, unit);
 
 	scaledata(ifa.rxmax, opts, &data, &unit);
-	mvprintw(graphlines*2+2, coll, fmt, "max:", data, unit);
+	mvprintw(graphlines*2+2, colrx, fmt, "max:", data, unit);
 	scaledata(ifa.txmax, opts, &data, &unit);
-	mvprintw(graphlines*2+2, colr, fmt, "max:", data, unit);
+	mvprintw(graphlines*2+2, coltx, fmt, "max:", data, unit);
 
 	scaledata(ifa.rx / 1024, opts, &data, &unit);
-	mvprintw(graphlines*2+3, coll, fmt, "total:", data, unit);
+	mvprintw(graphlines*2+3, colrx, fmt, "total:", data, unit);
 	scaledata(ifa.tx / 1024, opts, &data, &unit);
-	mvprintw(graphlines*2+3, colr, fmt, "total:", data, unit);
+	mvprintw(graphlines*2+3, coltx, fmt, "total:", data, unit);
 
 	refresh();
 }
@@ -240,16 +241,12 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 	mib[4] = NET_RT_IFLIST;	/* no flags */
 	mib[5] = 0;
 
-	if (sysctl(mib, 6, NULL, &sz, NULL, 0) < 0) {
-		free(buf);
-		return 1;
-	}
+	if (sysctl(mib, 6, NULL, &sz, NULL, 0) < 0)
+		eprintf("can't read rx and tx bytes\n");
 
 	buf = ecalloc(1, sz);
-	if (sysctl(mib, 6, buf, &sz, NULL, 0) < 0) {
-		free(buf);
-		return 1;
-	}
+	if (sysctl(mib, 6, buf, &sz, NULL, 0) < 0)
+		eprintf("can't read rx and tx bytes\n");
 
 	for (next = buf; next < buf + sz; next += ifm->ifm_msglen) {
 		ifm = (struct if_msghdr *)next;
@@ -270,7 +267,7 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 	free(buf);
 
 	if (*rx == -1 || *tx == -1)
-		return 1;
+		eprintf("can't read rx and tx bytes\n");
 	return 0;
 }
 #endif
@@ -281,8 +278,7 @@ int getdata(struct iface *ifa, double delay, int opts) {
 	double prefix;
 
 	if (rx > 0 && tx > 0 && resize == 0) {
-		if (getcounters(ifa->ifname, &ifa->rx, &ifa->tx) != 0)
-			return 1;
+		getcounters(ifa->ifname, &ifa->rx, &ifa->tx);
 
 		memmove(ifa->rxs, ifa->rxs+1, sizeof ifa->rxs * (COLS-1));
 		memmove(ifa->txs, ifa->txs+1, sizeof ifa->txs * (COLS-1));
@@ -304,8 +300,7 @@ int getdata(struct iface *ifa, double delay, int opts) {
 				ifa->graphmax = ifa->txs[i];
 		}
 	}
-	if (getcounters(ifa->ifname, &rx, &tx) != 0)
-		return 1;
+	getcounters(ifa->ifname, &rx, &tx);
 	return 0;
 }
 
@@ -332,12 +327,11 @@ int main(int argc, char *argv[]) {
 					"-i <interface> network interface\n"
 					"-d <seconds>   redraw delay\n"
 					"-l <lines>     graph height\n", argv[0]);
-		else if (!strcmp("-i", argv[i])) {
-			strncpy(ifa.ifname, argv[++i], IFNAMSIZ-1);
-			ifa.ifname[IFNAMSIZ-1] = '\0';
-		} else if (!strcmp("-d", argv[i])) {
+		else if (!strcmp("-d", argv[i]))
 			delay = strtod(argv[++i], NULL);
-		} else if (!strcmp("-l", argv[i])) {
+		else if (!strcmp("-i", argv[i]))
+			astrncpy(ifa.ifname, argv[++i], IFNAMSIZ-1);
+		else if (!strcmp("-l", argv[i])) {
 			opts |= FIXEDLINES;
 			graphlines = strtol(argv[++i], NULL, 10);
 		}
@@ -366,16 +360,16 @@ int main(int argc, char *argv[]) {
 	ifa.txs = ecalloc(COLS, sizeof(double));
 
 	signal(SIGWINCH, sighandler);
+	getcounters(ifa.ifname, &ifa.rx, &ifa.tx);
 	if ((opts & FIXEDLINES) == 0)
 		graphlines = LINES/2-2;
-	getcounters(ifa.ifname, &ifa.rx, &ifa.tx);
 	printgraph(ifa, graphlines, opts);
 
 	while ((key = getch()) != 'q') {
-		if (key == 'r')
-			resize = 1;
 		if (resize)
 			scalegraph(&ifa, &graphlines, opts);
+		if (key != ERR)
+			resize = 1;
 		getdata(&ifa, delay, opts);
 		printgraph(ifa, graphlines, opts);
 	}
