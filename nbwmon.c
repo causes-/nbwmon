@@ -16,7 +16,6 @@
 #include <stdarg.h>
 #include <string.h>
 #include <signal.h>
-#include <unistd.h>
 #include <ncurses.h>
 #include <ifaddrs.h>
 #include <net/if.h>
@@ -83,28 +82,25 @@ void detectiface(char *ifname) {
 
 void scalegraph(struct iface *ifa, int *graphlines, int opts) {
 	int i, j;
-	int colsold;
+	int linestmp = LINES;
+	int colstmp = COLS;
 	double *rxs;
 	double *txs;
-
-	resize = 0;
-	colsold = COLS;
 
 	endwin();
 	refresh();
 	clear();
 
-	if ((opts & FIXEDLINES) == 0)
+	if ((opts & FIXEDLINES) == 0 && LINES != linestmp)
 		*graphlines = LINES/2-2;
-
-	if (COLS != colsold) {
+	if (COLS != colstmp) {
 		rxs = ifa->rxs;
 		txs = ifa->txs;
 
 		ifa->rxs = ecalloc(COLS, sizeof(double));
 		ifa->txs = ecalloc(COLS, sizeof(double));
 
-		for (i = COLS-1, j = colsold-1; i >= 0 && j >= 0; i--, j--) {
+		for (i = COLS-1, j = colstmp-1; i >= 0 && j >= 0; i--, j--) {
 			ifa->rxs[i] = rxs[j];
 			ifa->txs[i] = txs[j];
 		}
@@ -112,6 +108,7 @@ void scalegraph(struct iface *ifa, int *graphlines, int opts) {
 		free(rxs);
 		free(txs);
 	}
+	resize = 0;
 }
 
 void scaledata(double raw, int opts, double *data, const char **unit) {
@@ -133,6 +130,9 @@ void printgraph(struct iface ifa, int graphlines, int opts) {
 	double data;
 	const char *unit;
 	char *fmt;
+
+	if (graphlines < 3)
+		eprintf("minimum graph height: 3\n");
 
 	mvprintw(0, COLS/2-7, "interface: %s\n", ifa.ifname);
 
@@ -218,7 +218,7 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 	freeifaddrs(ifas);
 
 	if (*rx == -1 || *tx == -1)
-		return 1;
+		eprintf("can't read rx and tx bytes\n");
 	return 0;
 }
 
@@ -275,48 +275,45 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 }
 #endif
 
-int getdata(struct iface *ifa, int delay, int opts) {
-	static int i;
+int getdata(struct iface *ifa, double delay, int opts) {
+	int i;
 	static long long rx, tx;
 	double prefix;
 
-	prefix = (opts & SIUNITS) ? 1000.0 : 1024.0;
+	if (rx > 0 && tx > 0 && resize == 0) {
+		if (getcounters(ifa->ifname, &ifa->rx, &ifa->tx) != 0)
+			return 1;
 
+		memmove(ifa->rxs, ifa->rxs+1, sizeof ifa->rxs * (COLS-1));
+		memmove(ifa->txs, ifa->txs+1, sizeof ifa->txs * (COLS-1));
+
+		prefix = (opts & SIUNITS) ? 1000.0 : 1024.0;
+		ifa->rxs[COLS-1] = (ifa->rx - rx) / prefix / delay;
+		ifa->txs[COLS-1] = (ifa->tx - tx) / prefix / delay;
+
+		if (ifa->rxs[COLS-1] > ifa->rxmax)
+			ifa->rxmax = ifa->rxs[COLS-1];
+		if (ifa->txs[COLS-1] > ifa->txmax)
+			ifa->txmax = ifa->txs[COLS-1];
+
+		ifa->graphmax = 0;
+		for (i = 0; i < COLS; i++) {
+			if (ifa->rxs[i] > ifa->graphmax)
+				ifa->graphmax = ifa->rxs[i];
+			if (ifa->txs[i] > ifa->graphmax)
+				ifa->graphmax = ifa->txs[i];
+		}
+	}
 	if (getcounters(ifa->ifname, &rx, &tx) != 0)
 		return 1;
-	sleep(delay);
-	if (resize)
-		return 0;
-	if (getcounters(ifa->ifname, &ifa->rx, &ifa->tx) != 0)
-		return 1;
-
-	memmove(ifa->rxs, ifa->rxs+1, sizeof ifa->rxs * (COLS-1));
-	memmove(ifa->txs, ifa->txs+1, sizeof ifa->txs * (COLS-1));
-
-	ifa->rxs[COLS-1] = (ifa->rx - rx) / prefix / delay;
-	ifa->txs[COLS-1] = (ifa->tx - tx) / prefix / delay;
-
-	if (ifa->rxs[COLS-1] > ifa->rxmax)
-		ifa->rxmax = ifa->rxs[COLS-1];
-	if (ifa->txs[COLS-1] > ifa->txmax)
-		ifa->txmax = ifa->txs[COLS-1];
-
-	ifa->graphmax = 0;
-	for (i = 0; i < COLS; i++) {
-		if (ifa->rxs[i] > ifa->graphmax)
-			ifa->graphmax = ifa->rxs[i];
-		if (ifa->txs[i] > ifa->graphmax)
-			ifa->graphmax = ifa->txs[i];
-	}
-
 	return 0;
 }
 
 int main(int argc, char *argv[]) {
 	int i;
 	int opts = 0;
-	int delay = 1;
 	int graphlines;
+	double delay = 1.0;
 	char key;
 	struct iface ifa;
 
@@ -333,20 +330,16 @@ int main(int argc, char *argv[]) {
 					"-s             use SI units\n"
 					"-n             no colors\n"
 					"-i <interface> network interface\n"
-					"-d <seconds>   delay\n"
+					"-d <seconds>   redraw delay\n"
 					"-l <lines>     graph height\n", argv[0]);
 		else if (!strcmp("-i", argv[i])) {
 			strncpy(ifa.ifname, argv[++i], IFNAMSIZ-1);
 			ifa.ifname[IFNAMSIZ-1] = '\0';
 		} else if (!strcmp("-d", argv[i])) {
-			delay = strtol(argv[++i], NULL, 10);
-			if (delay < 1)
-				eprintf("minimum delay: 1\n");
+			delay = strtod(argv[++i], NULL);
 		} else if (!strcmp("-l", argv[i])) {
 			opts |= FIXEDLINES;
 			graphlines = strtol(argv[++i], NULL, 10);
-			if (graphlines < 3)
-				eprintf("minimum graph height: 3\n");
 		}
 	}
 
@@ -358,7 +351,10 @@ int main(int argc, char *argv[]) {
 	initscr();
 	curs_set(0);
 	noecho();
-	nodelay(stdscr, TRUE);
+	if (delay < 0.1)
+		eprintf("minimum delay: 0.1\n");
+	timeout(delay * 1000);
+	keypad(stdscr, TRUE);
 	if ((opts & NOCOLORS) == 0 && has_colors()) {
 		start_color();
 		use_default_colors();
@@ -370,19 +366,18 @@ int main(int argc, char *argv[]) {
 	ifa.txs = ecalloc(COLS, sizeof(double));
 
 	signal(SIGWINCH, sighandler);
-
 	if ((opts & FIXEDLINES) == 0)
 		graphlines = LINES/2-2;
+	getcounters(ifa.ifname, &ifa.rx, &ifa.tx);
+	printgraph(ifa, graphlines, opts);
 
-	while (1) {
-		key = getch();
-		if (key == 'q')
-			break;
-		else if (key == 'r' || resize)
+	while ((key = getch()) != 'q') {
+		if (key == 'r')
+			resize = 1;
+		if (resize)
 			scalegraph(&ifa, &graphlines, opts);
+		getdata(&ifa, delay, opts);
 		printgraph(ifa, graphlines, opts);
-		if (getdata(&ifa, delay, opts) != 0)
-			eprintf("can't read rx and tx bytes\n");
 	}
 
 	endwin();
