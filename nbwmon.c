@@ -21,6 +21,10 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 
+#define NOCOLORS	(1 << 0)
+#define FIXEDLINES	(1 << 1)
+#define SIUNITS		(1 << 2)
+
 struct iface {
 	char ifname[IFNAMSIZ];
 	long long rx;
@@ -77,7 +81,7 @@ void detectiface(char *ifname) {
 	freeifaddrs(ifas);
 }
 
-void scalegraph(struct iface *ifa, int *graphlines, int fixedlines) {
+void scalegraph(struct iface *ifa, int *graphlines, int opts) {
 	int i, j;
 	int colsold;
 	double *rxs;
@@ -90,7 +94,7 @@ void scalegraph(struct iface *ifa, int *graphlines, int fixedlines) {
 	refresh();
 	clear();
 
-	if (fixedlines == 0)
+	if ((opts & FIXEDLINES) == 0)
 		*graphlines = LINES/2-2;
 
 	if (COLS != colsold) {
@@ -110,19 +114,20 @@ void scalegraph(struct iface *ifa, int *graphlines, int fixedlines) {
 	}
 }
 
-void scaledata(double prefix, double in, double *data, const char **unit) {
+void scaledata(double raw, int opts, double *data, const char **unit) {
 	int i;
-	static const char units[2][8][4] = {
-		{ "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" },
-		{ "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" }
-	};
-	*data = in;
+	double prefix;
+	static const char iec[][4] = { "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" };
+	static const char si[][3] = { "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
+
+	prefix = (opts & SIUNITS) ? 1000.0 : 1024.0;
+	*data = raw;
 	for (i = 0; *data > prefix && i < 7; i++)
 		*data /= prefix;
-	*unit = units[prefix==1024.0][i];
+	*unit = (opts & SIUNITS) ? si[i] : iec[i];
 }
 
-void printgraph(struct iface ifa, double prefix, int graphlines) {
+void printgraph(struct iface ifa, int graphlines, int opts) {
 	int y, x;
 	int coll, colr;
 	double data;
@@ -162,30 +167,30 @@ void printgraph(struct iface ifa, double prefix, int graphlines) {
 	attroff(COLOR_PAIR(2));
 
 	fmt = "%.2f %s/s";
-	scaledata(prefix, ifa.graphmax, &data, &unit);
+	scaledata(ifa.graphmax, opts, &data, &unit);
 
 	mvprintw(1, 0, fmt, data, unit);
 	mvprintw(graphlines, 0, fmt, 0.0, unit);
 	mvprintw(graphlines+1, 0, fmt, 0.0, unit);
 	mvprintw(graphlines*2, 0, fmt, data, unit);
 
-	fmt = "%6s %.2f %s/s\t"; /* /t to clear after str */
+	fmt = "%6s %.2f %s/s\t"; /* clear overflowing chars with /t */
 	coll = COLS / 4 - 8;
 	colr = coll + COLS / 2 + 1;
 
-	scaledata(prefix, ifa.rxs[COLS-1], &data, &unit);
+	scaledata(ifa.rxs[COLS-1], opts, &data, &unit);
 	mvprintw(graphlines*2+1, coll, fmt, "RX:", data, unit);
-	scaledata(prefix, ifa.txs[COLS-1], &data, &unit);
+	scaledata(ifa.txs[COLS-1], opts, &data, &unit);
 	mvprintw(graphlines*2+1, colr, fmt, "TX:", data, unit);
 
-	scaledata(prefix, ifa.rxmax, &data, &unit);
+	scaledata(ifa.rxmax, opts, &data, &unit);
 	mvprintw(graphlines*2+2, coll, fmt, "max:", data, unit);
-	scaledata(prefix, ifa.txmax, &data, &unit);
+	scaledata(ifa.txmax, opts, &data, &unit);
 	mvprintw(graphlines*2+2, colr, fmt, "max:", data, unit);
 
-	scaledata(prefix, ifa.rx / 1024, &data, &unit);
+	scaledata(ifa.rx / 1024, opts, &data, &unit);
 	mvprintw(graphlines*2+3, coll, fmt, "total:", data, unit);
-	scaledata(prefix, ifa.tx / 1024, &data, &unit);
+	scaledata(ifa.tx / 1024, opts, &data, &unit);
 	mvprintw(graphlines*2+3, colr, fmt, "total:", data, unit);
 
 	refresh();
@@ -270,9 +275,12 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 }
 #endif
 
-int getdata(struct iface *ifa, int delay, double prefix) {
+int getdata(struct iface *ifa, int delay, int opts) {
 	static int i;
 	static long long rx, tx;
+	double prefix;
+
+	prefix = (opts & SIUNITS) ? 1000.0 : 1024.0;
 
 	if (getcounters(ifa->ifname, &rx, &tx) != 0)
 		return 1;
@@ -306,11 +314,9 @@ int getdata(struct iface *ifa, int delay, double prefix) {
 
 int main(int argc, char *argv[]) {
 	int i;
-	int colors = 1;
+	int opts = 0;
 	int delay = 1;
-	int fixedlines = 0;
-	int graphlines = 0;
-	double prefix = 1024.0;
+	int graphlines;
 	char key;
 	struct iface ifa;
 
@@ -318,9 +324,9 @@ int main(int argc, char *argv[]) {
 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp("-s", argv[i]))
-			prefix = 1000.0;
+			opts |= SIUNITS;
 		else if (!strcmp("-n", argv[i]))
-			colors = 0;
+			opts |= NOCOLORS;
 		else if (argv[i+1] == NULL || argv[i+1][0] == '-')
 			eprintf("usage: %s [options]\n"
 					"-h             help\n"
@@ -337,10 +343,10 @@ int main(int argc, char *argv[]) {
 			if (delay < 1)
 				eprintf("minimum delay: 1\n");
 		} else if (!strcmp("-l", argv[i])) {
+			opts |= FIXEDLINES;
 			graphlines = strtol(argv[++i], NULL, 10);
 			if (graphlines < 3)
 				eprintf("minimum graph height: 3\n");
-			fixedlines = 1;
 		}
 	}
 
@@ -353,7 +359,7 @@ int main(int argc, char *argv[]) {
 	curs_set(0);
 	noecho();
 	nodelay(stdscr, TRUE);
-	if (colors && has_colors()) {
+	if ((opts & NOCOLORS) == 0 && has_colors()) {
 		start_color();
 		use_default_colors();
 		init_pair(1, COLOR_GREEN, -1);
@@ -365,7 +371,7 @@ int main(int argc, char *argv[]) {
 
 	signal(SIGWINCH, sighandler);
 
-	if (fixedlines == 0)
+	if ((opts & FIXEDLINES) == 0)
 		graphlines = LINES/2-2;
 
 	while (1) {
@@ -373,9 +379,9 @@ int main(int argc, char *argv[]) {
 		if (key == 'q')
 			break;
 		else if (key == 'r' || resize)
-			scalegraph(&ifa, &graphlines, fixedlines);
-		printgraph(ifa, prefix, graphlines);
-		if (getdata(&ifa, delay, prefix) != 0)
+			scalegraph(&ifa, &graphlines, opts);
+		printgraph(ifa, graphlines, opts);
+		if (getdata(&ifa, delay, opts) != 0)
 			eprintf("can't read rx and tx bytes\n");
 	}
 
