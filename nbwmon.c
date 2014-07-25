@@ -23,6 +23,7 @@
 #define NOCOLORS	(1 << 0)
 #define FIXEDLINES	(1 << 1)
 #define SIUNITS		(1 << 2)
+#define KEYPRESSED	(1 << 3)
 
 struct iface {
 	char ifname[IFNAMSIZ];
@@ -96,7 +97,7 @@ void scalegraph(struct iface *ifa, int *graphlines, int opts) {
 	refresh();
 	clear();
 
-	if ((opts & FIXEDLINES) == 0 && LINES != linestmp)
+	if (!(opts & FIXEDLINES) && LINES != linestmp)
 		*graphlines = LINES/2-2;
 	if (COLS != colstmp) {
 		rxs = ifa->rxs;
@@ -277,7 +278,7 @@ int getdata(struct iface *ifa, double delay, int opts) {
 	static long long rx, tx;
 	double prefix;
 
-	if (rx > 0 && tx > 0 && resize == 0) {
+	if (rx > 0 && tx > 0 && !resize && !(opts & KEYPRESSED)) {
 		getcounters(ifa->ifname, &ifa->rx, &ifa->tx);
 
 		memmove(ifa->rxs, ifa->rxs+1, sizeof ifa->rxs * (COLS-1));
@@ -349,7 +350,7 @@ int main(int argc, char *argv[]) {
 		eprintf("minimum delay: 0.1\n");
 	timeout(delay * 1000);
 	keypad(stdscr, TRUE);
-	if ((opts & NOCOLORS) == 0 && has_colors()) {
+	if (!(opts & NOCOLORS) && has_colors()) {
 		start_color();
 		use_default_colors();
 		init_pair(1, COLOR_GREEN, -1);
@@ -361,17 +362,18 @@ int main(int argc, char *argv[]) {
 
 	signal(SIGWINCH, sighandler);
 	getcounters(ifa.ifname, &ifa.rx, &ifa.tx);
-	if ((opts & FIXEDLINES) == 0)
+	if (!(opts & FIXEDLINES))
 		graphlines = LINES/2-2;
 	printgraph(ifa, graphlines, opts);
 
 	while ((key = getch()) != 'q') {
-		if (resize)
-			scalegraph(&ifa, &graphlines, opts);
 		if (key != ERR)
-			resize = 1;
+			opts |= KEYPRESSED;
 		getdata(&ifa, delay, opts);
+		if (resize || key == 'r')
+			scalegraph(&ifa, &graphlines, opts);
 		printgraph(ifa, graphlines, opts);
+		opts &= ~KEYPRESSED;
 	}
 
 	endwin();
