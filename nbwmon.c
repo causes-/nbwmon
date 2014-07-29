@@ -67,9 +67,9 @@ void *ecalloc(size_t nmemb, size_t size) {
 }
 
 char *astrncpy(char *dest, const char *src, size_t n) {
-	strncpy(dest, src, n-1);
+	char *p = strncpy(dest, src, n-1);
 	dest[n-1] = '\0';
-	return dest;
+	return p;
 }
 
 void detectiface(char *ifname) {
@@ -82,15 +82,14 @@ void detectiface(char *ifname) {
 			continue;
 		if (ifa->ifa_flags & IFF_RUNNING)
 			if (ifa->ifa_flags & IFF_UP) {
-				astrncpy(ifname, ifa->ifa_name, IFNAMSIZ-1);
+				astrncpy(ifname, ifa->ifa_name, IFNAMSIZ);
 				break;
 			}
 	}
 	freeifaddrs(ifas);
 }
 
-void scalegraph(struct iface *ifa, int *graphlines, int opts) {
-	int i, j;
+void scalegraph(struct iface *ifa, unsigned int *graphlines, int opts) {
 	int linestmp = LINES;
 	int colstmp = COLS;
 	double *rxs;
@@ -100,18 +99,21 @@ void scalegraph(struct iface *ifa, int *graphlines, int opts) {
 	refresh();
 	clear();
 
-	if (!(opts & FIXEDLINES) && LINES != linestmp)
+	if (LINES != linestmp && !(opts & FIXEDLINES))
 		*graphlines = LINES/2-2;
+
 	if (COLS != colstmp) {
 		rxs = ifa->rxs;
 		txs = ifa->txs;
-
 		ifa->rxs = ecalloc(COLS, sizeof(double));
 		ifa->txs = ecalloc(COLS, sizeof(double));
 
-		for (i = COLS-1, j = colstmp-1; i >= 0 && j >= 0; i--, j--) {
-			ifa->rxs[i] = rxs[j];
-			ifa->txs[i] = txs[j];
+		if (COLS > colstmp) {
+			memmove(ifa->rxs+(COLS-colstmp), rxs, sizeof(double)*colstmp);
+			memmove(ifa->txs+(COLS-colstmp), txs, sizeof(double)*colstmp);
+		} else {
+			memmove(ifa->rxs, rxs+(colstmp-COLS), sizeof(double)*COLS);
+			memmove(ifa->txs, txs+(colstmp-COLS), sizeof(double)*COLS);
 		}
 		free(rxs);
 		free(txs);
@@ -132,15 +134,12 @@ void scaledata(double raw, int opts, double *data, const char **unit) {
 	*unit = (opts & SIUNITS) ? si[i] : iec[i];
 }
 
-void printgraph(struct iface ifa, int graphlines, int opts) {
+void printgraph(struct iface ifa, unsigned int graphlines, int opts) {
 	int y, x;
 	int colrx, coltx;
 	double data;
 	const char *unit;
 	char *fmt;
-
-	if (graphlines < 3)
-		eprintf("minimum graph height: 3\n");
 
 	mvprintw(0, COLS/2-7, "interface: %s\n", ifa.ifname);
 
@@ -309,7 +308,7 @@ int getdata(struct iface *ifa, double delay, int opts) {
 int main(int argc, char *argv[]) {
 	int i;
 	int opts = 0;
-	int graphlines;
+	unsigned int graphlines;
 	double delay = 1.0;
 	char key;
 	struct iface ifa;
@@ -332,7 +331,7 @@ int main(int argc, char *argv[]) {
 		else if (!strcmp("-d", argv[i]))
 			delay = strtod(argv[++i], NULL);
 		else if (!strcmp("-i", argv[i]))
-			astrncpy(ifa.ifname, argv[++i], IFNAMSIZ-1);
+			astrncpy(ifa.ifname, argv[++i], IFNAMSIZ);
 		else if (!strcmp("-l", argv[i])) {
 			opts |= FIXEDLINES;
 			graphlines = strtol(argv[++i], NULL, 10);
@@ -347,10 +346,8 @@ int main(int argc, char *argv[]) {
 	initscr();
 	curs_set(0);
 	noecho();
-	if (delay < 0.1)
-		eprintf("minimum delay: 0.1\n");
-	timeout(delay * 1000);
 	keypad(stdscr, TRUE);
+	timeout(delay * 1000);
 	if (!(opts & NOCOLORS) && has_colors()) {
 		start_color();
 		use_default_colors();
