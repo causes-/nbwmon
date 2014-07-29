@@ -38,6 +38,11 @@ struct iface {
 
 static sig_atomic_t resize;
 
+void sighandler(int sig) {
+	if (sig == SIGWINCH)
+		resize = 1;
+}
+
 void eprintf(const char *fmt, ...) {
 	va_list ap;
 	endwin();
@@ -47,9 +52,15 @@ void eprintf(const char *fmt, ...) {
 	exit(EXIT_FAILURE);
 }
 
+void *emalloc(size_t size) {
+	void *p = malloc(size);
+	if (!p)
+		eprintf("out of memory\n");
+	return p;
+}
+
 void *ecalloc(size_t nmemb, size_t size) {
-	void *p;
-	p = calloc(nmemb, size);
+	void *p = calloc(nmemb, size);
 	if (!p)
 		eprintf("out of memory\n");
 	return p;
@@ -57,15 +68,8 @@ void *ecalloc(size_t nmemb, size_t size) {
 
 char *astrncpy(char *dest, const char *src, size_t n) {
 	strncpy(dest, src, n-1);
-	dest[n] = '\0';
+	dest[n-1] = '\0';
 	return dest;
-}
-
-void sighandler(int sig) {
-	if (sig == SIGWINCH) {
-		resize = 1;
-		signal(SIGWINCH, sighandler);
-	}
 }
 
 void detectiface(char *ifname) {
@@ -76,12 +80,11 @@ void detectiface(char *ifname) {
 	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
 		if (ifa->ifa_flags & IFF_LOOPBACK)
 			continue;
-		else if (!(ifa->ifa_flags & IFF_RUNNING))
-			continue;
-		else if (!(ifa->ifa_flags & IFF_UP))
-			continue;
-		astrncpy(ifname, ifa->ifa_name, IFNAMSIZ-1);
-		break;
+		if (ifa->ifa_flags & IFF_RUNNING)
+			if (ifa->ifa_flags & IFF_UP) {
+				astrncpy(ifname, ifa->ifa_name, IFNAMSIZ-1);
+				break;
+			}
 	}
 	freeifaddrs(ifas);
 }
@@ -124,7 +127,7 @@ void scaledata(double raw, int opts, double *data, const char **unit) {
 
 	prefix = (opts & SIUNITS) ? 1000.0 : 1024.0;
 	*data = raw;
-	for (i = 0; *data > prefix && i < 7; i++)
+	for (i = 0; *data >= prefix && i < 8; i++)
 		*data /= prefix;
 	*unit = (opts & SIUNITS) ? si[i] : iec[i];
 }
@@ -242,10 +245,8 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 	mib[4] = NET_RT_IFLIST;	/* no flags */
 	mib[5] = 0;
 
-	if (sysctl(mib, 6, NULL, &sz, NULL, 0) < 0)
-		eprintf("can't read rx and tx bytes\n");
-
-	buf = ecalloc(1, sz);
+	sysctl(mib, 6, NULL, &sz, NULL, 0);
+	buf = emalloc(sz);
 	if (sysctl(mib, 6, buf, &sz, NULL, 0) < 0)
 		eprintf("can't read rx and tx bytes\n");
 
@@ -281,8 +282,8 @@ int getdata(struct iface *ifa, double delay, int opts) {
 	if (rx > 0 && tx > 0 && !resize && !(opts & KEYPRESSED)) {
 		getcounters(ifa->ifname, &ifa->rx, &ifa->tx);
 
-		memmove(ifa->rxs, ifa->rxs+1, sizeof ifa->rxs * (COLS-1));
-		memmove(ifa->txs, ifa->txs+1, sizeof ifa->txs * (COLS-1));
+		memmove(ifa->rxs, ifa->rxs+1, sizeof(double)*(COLS-1));
+		memmove(ifa->txs, ifa->txs+1, sizeof(double)*(COLS-1));
 
 		prefix = (opts & SIUNITS) ? 1000.0 : 1024.0;
 		ifa->rxs[COLS-1] = (ifa->rx - rx) / prefix / delay;
@@ -356,11 +357,11 @@ int main(int argc, char *argv[]) {
 		init_pair(1, COLOR_GREEN, -1);
 		init_pair(2, COLOR_RED, -1);
 	}
+	signal(SIGWINCH, sighandler);
 
 	ifa.rxs = ecalloc(COLS, sizeof(double));
 	ifa.txs = ecalloc(COLS, sizeof(double));
 
-	signal(SIGWINCH, sighandler);
 	getcounters(ifa.ifname, &ifa.rx, &ifa.tx);
 	if (!(opts & FIXEDLINES))
 		graphlines = LINES/2-2;
