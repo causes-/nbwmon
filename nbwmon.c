@@ -89,36 +89,17 @@ void detectiface(char *ifname) {
 	freeifaddrs(ifas);
 }
 
-void scalegraph(struct iface *ifa, unsigned int *graphlines, int opts) {
-	int linestmp = LINES;
-	int colstmp = COLS;
-	double *rxs;
-	double *txs;
-
-	endwin();
-	refresh();
-	clear();
-
-	if (LINES != linestmp && !(opts & FIXEDLINES))
-		*graphlines = LINES/2-2;
-
-	if (COLS != colstmp) {
-		rxs = ifa->rxs;
-		txs = ifa->txs;
-		ifa->rxs = ecalloc(COLS, sizeof(double));
-		ifa->txs = ecalloc(COLS, sizeof(double));
-
-		if (COLS > colstmp) {
-			memmove(ifa->rxs+(COLS-colstmp), rxs, sizeof(double)*colstmp);
-			memmove(ifa->txs+(COLS-colstmp), txs, sizeof(double)*colstmp);
-		} else {
-			memmove(ifa->rxs, rxs+(colstmp-COLS), sizeof(double)*COLS);
-			memmove(ifa->txs, txs+(colstmp-COLS), sizeof(double)*COLS);
-		}
-		free(rxs);
-		free(txs);
-	}
-	resize = 0;
+void scalerxs(double **rxs, int cols, int colsold) {
+	double *rxstmp;
+	if (cols == colsold)
+		return;
+	rxstmp = *rxs;
+	*rxs = ecalloc(cols, sizeof(double));
+	if (cols > colsold)
+		memmove(*rxs+(cols-colsold), rxstmp, sizeof(double)*colsold);
+	else
+		memmove(*rxs, rxstmp+(colsold-cols), sizeof(double)*cols);
+	free(rxstmp);
 }
 
 void scaledata(double raw, int opts, double *data, const char **unit) {
@@ -308,6 +289,7 @@ int getdata(struct iface *ifa, double delay, int opts) {
 int main(int argc, char *argv[]) {
 	int i;
 	int opts = 0;
+	int linesold, colsold;
 	unsigned int graphlines;
 	double delay = 1.0;
 	char key;
@@ -368,8 +350,18 @@ int main(int argc, char *argv[]) {
 		if (key != ERR)
 			opts |= KEYPRESSED;
 		getdata(&ifa, delay, opts);
-		if (resize || key == 'r')
-			scalegraph(&ifa, &graphlines, opts);
+		if (resize || key == 'r') {
+			linesold = LINES;
+			colsold = COLS;
+			endwin();
+			refresh();
+			clear();
+			scalerxs(&ifa.rxs, COLS, colsold);
+			scalerxs(&ifa.txs, COLS, colsold);
+			if (LINES != linesold && !(opts & FIXEDLINES))
+				graphlines = LINES/2-2;
+			resize = 0;
+		}
 		printgraph(ifa, graphlines, opts);
 		opts &= ~KEYPRESSED;
 	}
