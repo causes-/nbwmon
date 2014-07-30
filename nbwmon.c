@@ -278,7 +278,7 @@ int main(int argc, char *argv[]) {
 	int linesold, colsold;
 	unsigned int graphlines;
 	double delay = 1.0;
-	char key;
+	char key = ERR;
 	struct iface ifa;
 
 	memset(&ifa, 0, sizeof ifa);
@@ -327,15 +327,11 @@ int main(int argc, char *argv[]) {
 	ifa.rxs = ecalloc(COLS, sizeof(double));
 	ifa.txs = ecalloc(COLS, sizeof(double));
 
-	getdata(&ifa, delay, opts);
 	if (!(opts & FIXEDLINES))
 		graphlines = LINES/2-2;
-	mvprintw(0, COLS/2-7, "interface: %s\n", ifa.ifname);
-	printrxs(ifa.rxs, ifa.graphmax, graphlines, COLS, COLOR_PAIR(1));
-	printrxs(ifa.txs, ifa.graphmax, graphlines, COLS, COLOR_PAIR(2));
-	printstats(ifa, graphlines, opts);
+	getcounters(ifa.ifname, &ifa.rx, &ifa.tx);
 
-	while ((key = getch()) != 'q') {
+	do {
 		if (key != ERR)
 			opts |= KEYPRESSED;
 		getdata(&ifa, delay, opts);
@@ -359,7 +355,7 @@ int main(int argc, char *argv[]) {
 		printstats(ifa, graphlines, opts);
 
 		opts &= ~KEYPRESSED;
-	}
+	} while ((key = getch()) != 'q');
 
 	endwin();
 	return EXIT_SUCCESS;
