@@ -102,12 +102,12 @@ void scalerxs(double **rxs, int cols, int colsold) {
 	free(rxstmp);
 }
 
-void printrxs(double *rxs, double graphmax, int graphlines, int graphcols, int color) {
+void printrxs(double *rxs, double graphmax, int lines, int cols, int color) {
 	int y, x;
 	attron(color);
-	for (y = graphlines-1; y >= 0; y--) {
-		for (x = 0; x < graphcols; x++) {
-			if (rxs[x] / graphmax * graphlines > y)
+	for (y = lines-1; y >= 0; y--) {
+		for (x = 0; x < cols; x++) {
+			if (rxs[x] / graphmax * lines > y)
 				addch('*');
 			else if (x == 0) {
 				attroff(color);
@@ -133,7 +133,7 @@ void scaledata(double raw, int opts, double *data, const char **unit) {
 	*unit = (opts & SIUNITS) ? si[i] : iec[i];
 }
 
-void printstats(struct iface ifa, unsigned int graphlines, int opts) {
+void printstats(struct iface ifa, int lines, int cols, int opts) {
 	int colrx, coltx;
 	double data;
 	const char *unit;
@@ -142,33 +142,33 @@ void printstats(struct iface ifa, unsigned int graphlines, int opts) {
 	fmt = "%.2f %s/s";
 	scaledata(ifa.graphmax, opts, &data, &unit);
 	mvprintw(1, 0, fmt, data, unit);
-	mvprintw(graphlines, 0, fmt, 0.0, unit);
-	mvprintw(graphlines+1, 0, fmt, data, unit);
-	mvprintw(graphlines*2, 0, fmt, 0.0, unit);
+	mvprintw(lines, 0, fmt, 0.0, unit);
+	mvprintw(lines+1, 0, fmt, data, unit);
+	mvprintw(lines*2, 0, fmt, 0.0, unit);
 
 	fmt = "%6s %.2f %s/s\t"; /* clear overflowing chars with /t */
-	colrx = COLS / 4 - 8;
-	coltx = colrx + COLS / 2 + 1;
-	scaledata(ifa.rxs[COLS-1], opts, &data, &unit);
-	mvprintw(graphlines*2+1, colrx, fmt, "RX:", data, unit);
-	scaledata(ifa.txs[COLS-1], opts, &data, &unit);
-	mvprintw(graphlines*2+1, coltx, fmt, "TX:", data, unit);
+	colrx = cols / 4 - 8;
+	coltx = colrx + cols / 2 + 1;
+	scaledata(ifa.rxs[cols-1], opts, &data, &unit);
+	mvprintw(lines*2+1, colrx, fmt, "RX:", data, unit);
+	scaledata(ifa.txs[cols-1], opts, &data, &unit);
+	mvprintw(lines*2+1, coltx, fmt, "TX:", data, unit);
 
 	scaledata(ifa.rxmax, opts, &data, &unit);
-	mvprintw(graphlines*2+2, colrx, fmt, "max:", data, unit);
+	mvprintw(lines*2+2, colrx, fmt, "max:", data, unit);
 	scaledata(ifa.txmax, opts, &data, &unit);
-	mvprintw(graphlines*2+2, coltx, fmt, "max:", data, unit);
+	mvprintw(lines*2+2, coltx, fmt, "max:", data, unit);
 
 	scaledata(ifa.rx / 1024, opts, &data, &unit);
-	mvprintw(graphlines*2+3, colrx, fmt, "total:", data, unit);
+	mvprintw(lines*2+3, colrx, fmt, "total:", data, unit);
 	scaledata(ifa.tx / 1024, opts, &data, &unit);
-	mvprintw(graphlines*2+3, coltx, fmt, "total:", data, unit);
+	mvprintw(lines*2+3, coltx, fmt, "total:", data, unit);
 
 	refresh();
 }
 
 #ifdef __linux__
-int getcounters(char *ifname, long long *rx, long long *tx) {
+void getcounters(char *ifname, long long *rx, long long *tx) {
 	struct ifaddrs *ifas, *ifa;
 	struct rtnl_link_stats *stats;
 
@@ -176,7 +176,7 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 	*tx = -1;
 
 	if (getifaddrs(&ifas) == -1)
-		return 1;
+		return;
 	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
 		if (!strcmp(ifa->ifa_name, ifname)) {
 			if (ifa->ifa_addr->sa_family == AF_PACKET && ifa->ifa_data != NULL) {
@@ -190,11 +190,10 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 
 	if (*rx == -1 || *tx == -1)
 		eprintf("can't read rx and tx bytes\n");
-	return 0;
 }
 
 #elif __OpenBSD__
-int getcounters(char *ifname, long long *rx, long long *tx) {
+void getcounters(char *ifname, long long *rx, long long *tx) {
 	int mib[6];
 	char *buf = NULL, *next;
 	size_t sz;
@@ -236,47 +235,46 @@ int getcounters(char *ifname, long long *rx, long long *tx) {
 
 	if (*rx == -1 || *tx == -1)
 		eprintf("can't read rx and tx bytes\n");
-	return 0;
 }
 #endif
 
-int getdata(struct iface *ifa, double delay, int opts) {
+void getdata(struct iface *ifa, double delay, int graphcols, int opts) {
 	int i;
 	static long long rx, tx;
 	double prefix;
 
-	if (rx > 0 && tx > 0 && !resize && !(opts & KEYPRESSED)) {
+	if (rx > 0 && tx > 0 && resize == 0 && !(opts & KEYPRESSED)) {
 		getcounters(ifa->ifname, &ifa->rx, &ifa->tx);
 
-		memmove(ifa->rxs, ifa->rxs+1, sizeof(double)*(COLS-1));
-		memmove(ifa->txs, ifa->txs+1, sizeof(double)*(COLS-1));
+		memmove(ifa->rxs, ifa->rxs+1, sizeof(double)*(graphcols-1));
+		memmove(ifa->txs, ifa->txs+1, sizeof(double)*(graphcols-1));
 
 		prefix = (opts & SIUNITS) ? 1000.0 : 1024.0;
-		ifa->rxs[COLS-1] = (ifa->rx - rx) / prefix / delay;
-		ifa->txs[COLS-1] = (ifa->tx - tx) / prefix / delay;
+		ifa->rxs[graphcols-1] = (ifa->rx - rx) / prefix / delay;
+		ifa->txs[graphcols-1] = (ifa->tx - tx) / prefix / delay;
 
-		if (ifa->rxs[COLS-1] > ifa->rxmax)
-			ifa->rxmax = ifa->rxs[COLS-1];
-		if (ifa->txs[COLS-1] > ifa->txmax)
-			ifa->txmax = ifa->txs[COLS-1];
+		if (ifa->rxs[graphcols-1] > ifa->rxmax)
+			ifa->rxmax = ifa->rxs[graphcols-1];
+		if (ifa->txs[graphcols-1] > ifa->txmax)
+			ifa->txmax = ifa->txs[graphcols-1];
 
 		ifa->graphmax = 0;
-		for (i = 0; i < COLS; i++) {
+		for (i = 0; i < graphcols; i++) {
 			if (ifa->rxs[i] > ifa->graphmax)
 				ifa->graphmax = ifa->rxs[i];
 			if (ifa->txs[i] > ifa->graphmax)
 				ifa->graphmax = ifa->txs[i];
 		}
 	}
+
 	getcounters(ifa->ifname, &rx, &tx);
-	return 0;
 }
 
 int main(int argc, char *argv[]) {
 	int i;
 	int opts = 0;
 	int linesold, colsold;
-	unsigned int graphlines;
+	int graphlines;
 	double delay = 1.0;
 	char key = ERR;
 	struct iface ifa;
@@ -332,9 +330,10 @@ int main(int argc, char *argv[]) {
 	getcounters(ifa.ifname, &ifa.rx, &ifa.tx);
 
 	do {
+		key = getch();
 		if (key != ERR)
 			opts |= KEYPRESSED;
-		getdata(&ifa, delay, opts);
+		getdata(&ifa, delay, COLS, opts);
 
 		if (resize || key == 'r') {
 			linesold = LINES;
@@ -352,10 +351,10 @@ int main(int argc, char *argv[]) {
 		mvprintw(0, COLS/2-7, "interface: %s\n", ifa.ifname);
 		printrxs(ifa.rxs, ifa.graphmax, graphlines, COLS, COLOR_PAIR(1));
 		printrxs(ifa.txs, ifa.graphmax, graphlines, COLS, COLOR_PAIR(2));
-		printstats(ifa, graphlines, opts);
+		printstats(ifa, graphlines, COLS, opts);
 
 		opts &= ~KEYPRESSED;
-	} while ((key = getch()) != 'q');
+	} while (key != 'q');
 
 	endwin();
 	return EXIT_SUCCESS;
