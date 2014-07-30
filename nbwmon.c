@@ -102,6 +102,24 @@ void scalerxs(double **rxs, int cols, int colsold) {
 	free(rxstmp);
 }
 
+void printrxs(double *rxs, double graphmax, int graphlines, int graphcols, int color) {
+	int y, x;
+	attron(color);
+	for (y = graphlines-1; y >= 0; y--) {
+		for (x = 0; x < graphcols; x++) {
+			if (rxs[x] / graphmax * graphlines > y)
+				addch('*');
+			else if (x == 0) {
+				attroff(color);
+				addch('-');
+				attron(color);
+			} else
+				addch(' ');
+		}
+	}
+	attroff(color);
+}
+
 void scaledata(double raw, int opts, double *data, const char **unit) {
 	int i;
 	double prefix;
@@ -115,50 +133,18 @@ void scaledata(double raw, int opts, double *data, const char **unit) {
 	*unit = (opts & SIUNITS) ? si[i] : iec[i];
 }
 
-void printgraph(struct iface ifa, unsigned int graphlines, int opts) {
-	int y, x;
+void printstats(struct iface ifa, unsigned int graphlines, int opts) {
 	int colrx, coltx;
 	double data;
 	const char *unit;
 	char *fmt;
 
-	mvprintw(0, COLS/2-7, "interface: %s\n", ifa.ifname);
-
-	attron(COLOR_PAIR(1));
-	for (y = graphlines-1; y >= 0; y--) {
-		for (x = 0; x < COLS; x++) {
-			if (ifa.rxs[x] / ifa.graphmax * graphlines > y)
-				addch('*');
-			else if (x == 0) {
-				attroff(COLOR_PAIR(1));
-				addch('-');
-				attron(COLOR_PAIR(1));
-			} else
-				addch(' ');
-		}
-	}
-	attroff(COLOR_PAIR(1));
-	attron(COLOR_PAIR(2));
-	for (y = 0; y < graphlines; y++) {
-		for (x = 0; x < COLS; x++) {
-			if (ifa.txs[x] / ifa.graphmax * graphlines > y)
-				addch('*');
-			else if (x == 0) {
-				attroff(COLOR_PAIR(2));
-				addch('-');
-				attron(COLOR_PAIR(2));
-			} else
-				addch(' ');
-		}
-	}
-	attroff(COLOR_PAIR(2));
-
 	fmt = "%.2f %s/s";
 	scaledata(ifa.graphmax, opts, &data, &unit);
 	mvprintw(1, 0, fmt, data, unit);
 	mvprintw(graphlines, 0, fmt, 0.0, unit);
-	mvprintw(graphlines+1, 0, fmt, 0.0, unit);
-	mvprintw(graphlines*2, 0, fmt, data, unit);
+	mvprintw(graphlines+1, 0, fmt, data, unit);
+	mvprintw(graphlines*2, 0, fmt, 0.0, unit);
 
 	fmt = "%6s %.2f %s/s\t"; /* clear overflowing chars with /t */
 	colrx = COLS / 4 - 8;
@@ -341,15 +327,19 @@ int main(int argc, char *argv[]) {
 	ifa.rxs = ecalloc(COLS, sizeof(double));
 	ifa.txs = ecalloc(COLS, sizeof(double));
 
-	getcounters(ifa.ifname, &ifa.rx, &ifa.tx);
+	getdata(&ifa, delay, opts);
 	if (!(opts & FIXEDLINES))
 		graphlines = LINES/2-2;
-	printgraph(ifa, graphlines, opts);
+	mvprintw(0, COLS/2-7, "interface: %s\n", ifa.ifname);
+	printrxs(ifa.rxs, ifa.graphmax, graphlines, COLS, COLOR_PAIR(1));
+	printrxs(ifa.txs, ifa.graphmax, graphlines, COLS, COLOR_PAIR(2));
+	printstats(ifa, graphlines, opts);
 
 	while ((key = getch()) != 'q') {
 		if (key != ERR)
 			opts |= KEYPRESSED;
 		getdata(&ifa, delay, opts);
+
 		if (resize || key == 'r') {
 			linesold = LINES;
 			colsold = COLS;
@@ -362,7 +352,12 @@ int main(int argc, char *argv[]) {
 				graphlines = LINES/2-2;
 			resize = 0;
 		}
-		printgraph(ifa, graphlines, opts);
+
+		mvprintw(0, COLS/2-7, "interface: %s\n", ifa.ifname);
+		printrxs(ifa.rxs, ifa.graphmax, graphlines, COLS, COLOR_PAIR(1));
+		printrxs(ifa.txs, ifa.graphmax, graphlines, COLS, COLOR_PAIR(2));
+		printstats(ifa, graphlines, opts);
+
 		opts &= ~KEYPRESSED;
 	}
 
