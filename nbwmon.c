@@ -151,7 +151,6 @@ void printstatsw(WINDOW *win, struct iface ifa, int cols, int opts) {
 	int line = 0;
 
 	werase(win);
-	mvwprintw(win, line++, COLS/2-7, "interface: %s\n", ifa.ifname);
 
 	fmt = "%6s %.2f %s/s";
 	colrx = cols / 4 - 8;
@@ -290,12 +289,12 @@ void getdata(struct iface *ifa, double delay, int cols, int opts) {
 int main(int argc, char *argv[]) {
 	int i;
 	int opts = 0;
-	int linesold = 0, colsold;
-	int graphlines, statslines = 4;
+	int linesold, colsold;
+	int graphlines, statslines = 3;
 	double delay = 1.0;
 	char key = ERR;
 	struct iface ifa;
-	WINDOW *rxgraph, *txgraph, *stats;
+	WINDOW *titlebar, *rxgraph, *txgraph, *stats;
 
 	memset(&ifa, 0, sizeof ifa);
 
@@ -347,14 +346,14 @@ int main(int argc, char *argv[]) {
 		init_pair(2, COLOR_RED, -1);
 	}
 	signal(SIGWINCH, sighandler);
-
 	ifa.rxs = ecalloc(COLS, sizeof(double));
 	ifa.txs = ecalloc(COLS, sizeof(double));
 
 	if (!(opts & FIXEDLINES))
-		graphlines = (LINES-statslines)/2;
-	rxgraph = newwin(graphlines, COLS, 0, 0);
-	txgraph = newwin(graphlines, COLS, graphlines, 0);
+		graphlines = (LINES-statslines-1)/2;
+	titlebar = newwin(1, COLS, 0, 0);
+	rxgraph = newwin(graphlines, COLS, 1, 0);
+	txgraph = newwin(graphlines, COLS, graphlines+1, 0);
 	stats = newwin(statslines, COLS, LINES-statslines, 0);
 	getdata(&ifa, delay, COLS, opts);
 
@@ -371,18 +370,22 @@ int main(int argc, char *argv[]) {
 			refresh();
 			clear();
 			if (LINES != linesold && !(opts & FIXEDLINES))
-				graphlines = (LINES-statslines)/2;
+				graphlines = (LINES-statslines-1)/2;
 			scalerxs(&ifa.rxs, COLS, colsold);
 			scalerxs(&ifa.txs, COLS, colsold);
+
+			wresize(titlebar, 1, COLS);
 			wresize(rxgraph, graphlines, COLS);
 			wresize(txgraph, graphlines, COLS);
 			wresize(stats, statslines, COLS);
-			mvwin(txgraph, graphlines, 0);
+			mvwin(txgraph, graphlines+1, 0);
 			mvwin(stats, LINES-statslines, 0);
 			werase(stats);
 			resize = 0;
 		}
 
+		mvwprintw(titlebar, 0, COLS/2-7, "interface: %s\n", ifa.ifname);
+		wnoutrefresh(titlebar);
 		printrxsw(rxgraph, ifa.rxs, ifa.rxgraphmax, graphlines, COLS, COLOR_PAIR(1), opts);
 		printrxsw(txgraph, ifa.txs, ifa.txgraphmax, graphlines, COLS, COLOR_PAIR(2), opts);
 		printstatsw(stats, ifa, COLS, opts);
@@ -391,6 +394,7 @@ int main(int argc, char *argv[]) {
 		opts &= ~KEYPRESSED;
 	}
 
+	delwin(titlebar);
 	delwin(rxgraph);
 	delwin(txgraph);
 	delwin(stats);
