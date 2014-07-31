@@ -20,10 +20,12 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 
-#define NOCOLORS	(1 << 0)
-#define FIXEDLINES	(1 << 1)
-#define SIUNITS		(1 << 2)
-#define KEYPRESSED	(1 << 3)
+enum {
+	SIUNITS = 1 << 0,
+	NOCOLORS = 1 << 1,
+	FIXEDLINES = 1 << 2,
+	KEYPRESSED = 1 << 3,
+};
 
 struct iface {
 	char ifname[IFNAMSIZ];
@@ -96,9 +98,9 @@ void scalerxs(double **rxs, int cols, int colsold) {
 	rxstmp = *rxs;
 	*rxs = ecalloc(cols, sizeof(double));
 	if (cols > colsold)
-		memmove(*rxs+(cols-colsold), rxstmp, sizeof(double)*colsold);
+		memcpy(*rxs+(cols-colsold), rxstmp, sizeof(double)*colsold);
 	else
-		memmove(*rxs, rxstmp+(colsold-cols), sizeof(double)*cols);
+		memcpy(*rxs, rxstmp+(colsold-cols), sizeof(double)*cols);
 	free(rxstmp);
 }
 
@@ -238,7 +240,7 @@ void getcounters(char *ifname, long long *rx, long long *tx) {
 }
 #endif
 
-void getdata(struct iface *ifa, double delay, int graphcols, int opts) {
+void getdata(struct iface *ifa, double delay, int cols, int opts) {
 	int i;
 	static long long rx, tx;
 	double prefix;
@@ -246,20 +248,20 @@ void getdata(struct iface *ifa, double delay, int graphcols, int opts) {
 	if (rx > 0 && tx > 0 && resize == 0 && !(opts & KEYPRESSED)) {
 		getcounters(ifa->ifname, &ifa->rx, &ifa->tx);
 
-		memmove(ifa->rxs, ifa->rxs+1, sizeof(double)*(graphcols-1));
-		memmove(ifa->txs, ifa->txs+1, sizeof(double)*(graphcols-1));
+		memmove(ifa->rxs, ifa->rxs+1, sizeof(double)*(cols-1));
+		memmove(ifa->txs, ifa->txs+1, sizeof(double)*(cols-1));
 
 		prefix = (opts & SIUNITS) ? 1000.0 : 1024.0;
-		ifa->rxs[graphcols-1] = (ifa->rx - rx) / prefix / delay;
-		ifa->txs[graphcols-1] = (ifa->tx - tx) / prefix / delay;
+		ifa->rxs[cols-1] = (ifa->rx - rx) / prefix / delay;
+		ifa->txs[cols-1] = (ifa->tx - tx) / prefix / delay;
 
-		if (ifa->rxs[graphcols-1] > ifa->rxmax)
-			ifa->rxmax = ifa->rxs[graphcols-1];
-		if (ifa->txs[graphcols-1] > ifa->txmax)
-			ifa->txmax = ifa->txs[graphcols-1];
+		if (ifa->rxs[cols-1] > ifa->rxmax)
+			ifa->rxmax = ifa->rxs[cols-1];
+		if (ifa->txs[cols-1] > ifa->txmax)
+			ifa->txmax = ifa->txs[cols-1];
 
 		ifa->graphmax = 0;
-		for (i = 0; i < graphcols; i++) {
+		for (i = 0; i < cols; i++) {
 			if (ifa->rxs[i] > ifa->graphmax)
 				ifa->graphmax = ifa->rxs[i];
 			if (ifa->txs[i] > ifa->graphmax)
@@ -273,7 +275,7 @@ void getdata(struct iface *ifa, double delay, int graphcols, int opts) {
 int main(int argc, char *argv[]) {
 	int i;
 	int opts = 0;
-	int linesold, colsold;
+	int linesold = 0, colsold;
 	int graphlines;
 	double delay = 1.0;
 	char key = ERR;
@@ -325,12 +327,11 @@ int main(int argc, char *argv[]) {
 	ifa.rxs = ecalloc(COLS, sizeof(double));
 	ifa.txs = ecalloc(COLS, sizeof(double));
 
-	if (!(opts & FIXEDLINES))
+	if (LINES != linesold && !(opts & FIXEDLINES))
 		graphlines = LINES/2-2;
 	getcounters(ifa.ifname, &ifa.rx, &ifa.tx);
 
 	do {
-		key = getch();
 		if (key != ERR)
 			opts |= KEYPRESSED;
 		getdata(&ifa, delay, COLS, opts);
@@ -354,6 +355,7 @@ int main(int argc, char *argv[]) {
 		printstats(ifa, graphlines, COLS, opts);
 
 		opts &= ~KEYPRESSED;
+		key = getch();
 	} while (key != 'q');
 
 	endwin();
