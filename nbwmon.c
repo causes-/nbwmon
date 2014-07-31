@@ -76,7 +76,6 @@ char *astrncpy(char *dest, const char *src, size_t n) {
 
 void detectiface(char *ifname) {
 	struct ifaddrs *ifas, *ifa;
-
 	if (getifaddrs(&ifas) == -1)
 		return;
 	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
@@ -104,24 +103,6 @@ void scalerxs(double **rxs, int cols, int colsold) {
 	free(rxstmp);
 }
 
-void printrxs(double *rxs, double graphmax, int lines, int cols, int color) {
-	int y, x;
-	attron(color);
-	for (y = lines-1; y >= 0; y--) {
-		for (x = 0; x < cols; x++) {
-			if (rxs[x] / graphmax * lines > y)
-				addch('*');
-			else if (x == 0) {
-				attroff(color);
-				addch('-');
-				attron(color);
-			} else
-				addch(' ');
-		}
-	}
-	attroff(color);
-}
-
 void scaledata(double raw, int opts, double *data, const char **unit) {
 	int i;
 	double prefix;
@@ -135,38 +116,54 @@ void scaledata(double raw, int opts, double *data, const char **unit) {
 	*unit = (opts & SIUNITS) ? si[i] : iec[i];
 }
 
-void printstats(struct iface ifa, int lines, int cols, int opts) {
+void printrxsw(WINDOW *win, double *rxs, double graphmax, int lines, int cols, int color, int opts) {
+	int y, x;
+	double data;
+	const char *unit;
+	wmove(win, 0, 0);
+	wattron(win, color);
+	for (y = lines-1; y >= 0; y--)
+		for (x = 0; x < cols; x++)
+			if (rxs[x] / graphmax * lines > y)
+				waddch(win, '*');
+			else
+				waddch(win, ' ');
+	wattroff(win, color);
+	scaledata(graphmax, opts, &data, &unit);
+	mvwprintw(win, 0, 0, "%.2f %s/s", graphmax, unit);
+	mvwprintw(win, lines-1, 0, "%.2f %s/s", 0.0, unit);
+	wnoutrefresh(win);
+}
+
+void printstatsw(WINDOW *win, struct iface ifa, int cols, int opts) {
 	int colrx, coltx;
 	double data;
 	const char *unit;
 	char *fmt;
+	int line = 0;
 
-	fmt = "%.2f %s/s";
-	scaledata(ifa.graphmax, opts, &data, &unit);
-	mvprintw(1, 0, fmt, data, unit);
-	mvprintw(lines, 0, fmt, 0.0, unit);
-	mvprintw(lines+1, 0, fmt, data, unit);
-	mvprintw(lines*2, 0, fmt, 0.0, unit);
+	werase(win);
+	mvwprintw(win, line++, COLS/2-7, "interface: %s\n", ifa.ifname);
 
-	fmt = "%6s %.2f %s/s\t"; /* clear overflowing chars with /t */
+	fmt = "%6s %.2f %s/s";
 	colrx = cols / 4 - 8;
 	coltx = colrx + cols / 2 + 1;
 	scaledata(ifa.rxs[cols-1], opts, &data, &unit);
-	mvprintw(lines*2+1, colrx, fmt, "RX:", data, unit);
+	mvwprintw(win, line, colrx, fmt, "RX:", data, unit);
 	scaledata(ifa.txs[cols-1], opts, &data, &unit);
-	mvprintw(lines*2+1, coltx, fmt, "TX:", data, unit);
+	mvwprintw(win, line++, coltx, fmt, "TX:", data, unit);
 
 	scaledata(ifa.rxmax, opts, &data, &unit);
-	mvprintw(lines*2+2, colrx, fmt, "max:", data, unit);
+	mvwprintw(win, line, colrx, fmt, "max:", data, unit);
 	scaledata(ifa.txmax, opts, &data, &unit);
-	mvprintw(lines*2+2, coltx, fmt, "max:", data, unit);
+	mvwprintw(win, line++, coltx, fmt, "max:", data, unit);
 
 	scaledata(ifa.rx / 1024, opts, &data, &unit);
-	mvprintw(lines*2+3, colrx, fmt, "total:", data, unit);
+	mvwprintw(win, line, colrx, fmt, "total:", data, unit);
 	scaledata(ifa.tx / 1024, opts, &data, &unit);
-	mvprintw(lines*2+3, coltx, fmt, "total:", data, unit);
+	mvwprintw(win, line++, coltx, fmt, "total:", data, unit);
 
-	refresh();
+	wnoutrefresh(win);
 }
 
 #ifdef __linux__
@@ -276,10 +273,11 @@ int main(int argc, char *argv[]) {
 	int i;
 	int opts = 0;
 	int linesold = 0, colsold;
-	int graphlines;
+	int graphlines, statslines = 4;
 	double delay = 1.0;
 	char key = ERR;
 	struct iface ifa;
+	WINDOW *rxgraph, *txgraph, *stats;
 
 	memset(&ifa, 0, sizeof ifa);
 
@@ -327,11 +325,15 @@ int main(int argc, char *argv[]) {
 	ifa.rxs = ecalloc(COLS, sizeof(double));
 	ifa.txs = ecalloc(COLS, sizeof(double));
 
-	if (LINES != linesold && !(opts & FIXEDLINES))
-		graphlines = LINES/2-2;
-	getcounters(ifa.ifname, &ifa.rx, &ifa.tx);
+	if (!(opts & FIXEDLINES))
+		graphlines = (LINES-statslines)/2;
+	rxgraph = newwin(graphlines, COLS, 0, 0);
+	txgraph = newwin(graphlines, COLS, graphlines, 0);
+	stats = newwin(statslines, COLS, LINES-statslines, 0);
+	getdata(&ifa, delay, COLS, opts);
 
-	do {
+	while (key != 'q') {
+		key = getch();
 		if (key != ERR)
 			opts |= KEYPRESSED;
 		getdata(&ifa, delay, COLS, opts);
@@ -342,22 +344,30 @@ int main(int argc, char *argv[]) {
 			endwin();
 			refresh();
 			clear();
+			if (LINES != linesold && !(opts & FIXEDLINES))
+				graphlines = (LINES-statslines)/2;
 			scalerxs(&ifa.rxs, COLS, colsold);
 			scalerxs(&ifa.txs, COLS, colsold);
-			if (LINES != linesold && !(opts & FIXEDLINES))
-				graphlines = LINES/2-2;
+			wresize(rxgraph, graphlines, COLS);
+			wresize(txgraph, graphlines, COLS);
+			wresize(stats, statslines, COLS);
+			mvwin(txgraph, graphlines, 0);
+			mvwin(stats, LINES-statslines, 0);
+			werase(stats);
 			resize = 0;
 		}
 
-		mvprintw(0, COLS/2-7, "interface: %s\n", ifa.ifname);
-		printrxs(ifa.rxs, ifa.graphmax, graphlines, COLS, COLOR_PAIR(1));
-		printrxs(ifa.txs, ifa.graphmax, graphlines, COLS, COLOR_PAIR(2));
-		printstats(ifa, graphlines, COLS, opts);
+		printrxsw(rxgraph, ifa.rxs, ifa.graphmax, graphlines, COLS, COLOR_PAIR(1), opts);
+		printrxsw(txgraph, ifa.txs, ifa.graphmax, graphlines, COLS, COLOR_PAIR(2), opts);
+		printstatsw(stats, ifa, COLS, opts);
+		doupdate();
 
 		opts &= ~KEYPRESSED;
-		key = getch();
-	} while (key != 'q');
+	}
 
+	delwin(rxgraph);
+	delwin(txgraph);
+	delwin(stats);
 	endwin();
 	return EXIT_SUCCESS;
 }
