@@ -20,11 +20,14 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 
+#define VERSION "0.3"
+
 enum {
 	SIUNITS = 1 << 0,
 	NOCOLORS = 1 << 1,
 	FIXEDLINES = 1 << 2,
 	KEYPRESSED = 1 << 3,
+	UGMAX = 1 << 4,
 };
 
 struct iface {
@@ -35,7 +38,8 @@ struct iface {
 	double *txs;
 	double rxmax;
 	double txmax;
-	double graphmax;
+	double rxgraphmax;
+	double txgraphmax;
 };
 
 static sig_atomic_t resize;
@@ -126,7 +130,11 @@ void printrxsw(WINDOW *win, double *rxs, double graphmax, int lines, int cols, i
 		for (x = 0; x < cols; x++)
 			if (rxs[x] / graphmax * lines > y)
 				waddch(win, '*');
-			else
+			else if (x == 0) {
+				wattroff(win, color);
+				waddch(win, '-');
+				wattron(win, color);
+			} else
 				waddch(win, ' ');
 	wattroff(win, color);
 	scaledata(graphmax, opts, &data, &unit);
@@ -237,8 +245,16 @@ void getcounters(char *ifname, long long *rx, long long *tx) {
 }
 #endif
 
-void getdata(struct iface *ifa, double delay, int cols, int opts) {
+double getlargest(double *rxs, int len) {
 	int i;
+	double max = 0;
+	for (i = 0; i < len; i++)
+		if (rxs[i] > max)
+			max = rxs[i];
+	return max;
+}
+
+void getdata(struct iface *ifa, double delay, int cols, int opts) {
 	static long long rx, tx;
 	double prefix;
 
@@ -257,12 +273,14 @@ void getdata(struct iface *ifa, double delay, int cols, int opts) {
 		if (ifa->txs[cols-1] > ifa->txmax)
 			ifa->txmax = ifa->txs[cols-1];
 
-		ifa->graphmax = 0;
-		for (i = 0; i < cols; i++) {
-			if (ifa->rxs[i] > ifa->graphmax)
-				ifa->graphmax = ifa->rxs[i];
-			if (ifa->txs[i] > ifa->graphmax)
-				ifa->graphmax = ifa->txs[i];
+		ifa->rxgraphmax = getlargest(ifa->rxs, cols);
+		ifa->txgraphmax = getlargest(ifa->txs, cols);
+
+		if (opts & UGMAX) {
+			if (ifa->rxgraphmax > ifa->txgraphmax)
+				ifa->rxgraphmax = ifa->txgraphmax;
+			else
+				ifa->txgraphmax = ifa->rxgraphmax;
 		}
 	}
 
@@ -282,18 +300,26 @@ int main(int argc, char *argv[]) {
 	memset(&ifa, 0, sizeof ifa);
 
 	for (i = 1; i < argc; i++) {
-		if (!strcmp("-s", argv[i]))
-			opts |= SIUNITS;
+		if (!strcmp("-v", argv[i]))
+			eprintf("%s %s\n", argv[0], VERSION);
 		else if (!strcmp("-n", argv[i]))
 			opts |= NOCOLORS;
+		if (!strcmp("-s", argv[i]))
+			opts |= SIUNITS;
+		if (!strcmp("-u", argv[i]))
+			opts |= UGMAX;
 		else if (argv[i+1] == NULL || argv[i+1][0] == '-')
 			eprintf("usage: %s [options]\n"
-					"-h             help\n"
-					"-s             use SI units\n"
-					"-n             no colors\n"
-					"-i <interface> network interface\n"
-					"-d <seconds>   redraw delay\n"
-					"-l <lines>     graph height\n", argv[0]);
+					"\n"
+					"-h    help\n"
+					"-v    version\n"
+					"-n    no colors\n"
+					"-s    use SI units\n"
+					"-u    unified graphmax\n"
+					"\n"
+					"-i <interface>    network interface\n"
+					"-d <seconds>      redraw delay\n"
+					"-l <lines>        fixed graph height\n", argv[0]);
 		else if (!strcmp("-d", argv[i]))
 			delay = strtod(argv[++i], NULL);
 		else if (!strcmp("-i", argv[i]))
@@ -357,8 +383,8 @@ int main(int argc, char *argv[]) {
 			resize = 0;
 		}
 
-		printrxsw(rxgraph, ifa.rxs, ifa.graphmax, graphlines, COLS, COLOR_PAIR(1), opts);
-		printrxsw(txgraph, ifa.txs, ifa.graphmax, graphlines, COLS, COLOR_PAIR(2), opts);
+		printrxsw(rxgraph, ifa.rxs, ifa.rxgraphmax, graphlines, COLS, COLOR_PAIR(1), opts);
+		printrxsw(txgraph, ifa.txs, ifa.txgraphmax, graphlines, COLS, COLOR_PAIR(2), opts);
 		printstatsw(stats, ifa, COLS, opts);
 		doupdate();
 
