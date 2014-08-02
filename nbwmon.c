@@ -72,10 +72,15 @@ void *ecalloc(size_t nmemb, size_t size) {
 	return p;
 }
 
-char *astrncpy(char *dest, const char *src, size_t n) {
-	char *p = strncpy(dest, src, n-1);
-	dest[n-1] = '\0';
-	return p;
+size_t strlcpy(char *dest, const char *src, size_t size) {
+	size_t len;
+	size_t slen = strlen(src);
+	if (size) {
+		len = slen >= size ? size - 1 : slen;
+		memcpy(dest, src, len);
+		dest[len] = '\0';
+	}
+	return len;
 }
 
 void detectiface(char *ifname) {
@@ -87,7 +92,7 @@ void detectiface(char *ifname) {
 			continue;
 		if (ifa->ifa_flags & IFF_RUNNING)
 			if (ifa->ifa_flags & IFF_UP) {
-				astrncpy(ifname, ifa->ifa_name, IFNAMSIZ);
+				strlcpy(ifname, ifa->ifa_name, IFNAMSIZ);
 				break;
 			}
 	}
@@ -322,7 +327,7 @@ int main(int argc, char *argv[]) {
 		else if (!strcmp("-d", argv[i]))
 			delay = strtod(argv[++i], NULL);
 		else if (!strcmp("-i", argv[i]))
-			astrncpy(ifa.ifname, argv[++i], IFNAMSIZ);
+			strlcpy(ifa.ifname, argv[++i], IFNAMSIZ);
 		else if (!strcmp("-l", argv[i])) {
 			opts |= FIXEDLINES;
 			graphlines = strtol(argv[++i], NULL, 10);
@@ -348,6 +353,7 @@ int main(int argc, char *argv[]) {
 	signal(SIGWINCH, sighandler);
 	ifa.rxs = ecalloc(COLS, sizeof(double));
 	ifa.txs = ecalloc(COLS, sizeof(double));
+	mvprintw(0, 0, "collecting data from %s for %.2f seconds\n", ifa.ifname, delay);
 
 	if (!(opts & FIXEDLINES))
 		graphlines = (LINES-statslines-1)/2;
