@@ -1,13 +1,14 @@
 CFLAGS+=-std=c99 -pedantic -Wall -lncurses
+BIN=nbwmon
 
-all: nbwmon
+all: ${BIN}
 
 install: all
 	mkdir -p ${DESTDIR}/usr/bin
-	install -m 755 nbwmon ${DESTDIR}/usr/bin/
+	install -m 755 ${BIN} ${DESTDIR}/usr/bin/
 
 uninstall:
-	rm -f ${DESTDIR}/usr/bin/nbwmon
+	rm -f ${DESTDIR}/usr/bin/${BIN}
 
 clean:
-	rm -f nbwmon
+	rm -f ${BIN}

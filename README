@@ -1,25 +1,26 @@
 nbwmon
 ======
-
-about
------
-ncurses bandwidth monitor
+Ncurses bandwidth monitor.
 
 features
 --------
-print bandwidth graph
-print speed, peak and traffic
-scale to full window on startup and resize
-detect active network interface
-support for multiple units
-support for colors
+Print bandwidth graph.
+Print transfer speed, peak and total traffic.
+Scale to full window on startup and resize.
+Detect active network interface.
+Support for multiple units.
+Support for colors.
 
 usage
 -----
 usage: nbwmon [options]
--h             help
--s             use SI units
--n             no colors
--i <interface> network interface
--d <seconds>   delay
--l <lines>     graph height
+
+-h    help
+-v    version
+-n    no colors
+-s    use SI units
+-u    unified graphmax
+
+-i <interface>    network interface
+-d <seconds>      redraw delay
+-l <lines>        fixed graph height

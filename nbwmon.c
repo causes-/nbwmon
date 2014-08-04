@@ -249,16 +249,8 @@ void getcounters(char *ifname, long long *rx, long long *tx) {
 }
 #endif
 
-double getlargest(double *rxs, int len) {
-	int i;
-	double max = 0;
-	for (i = 0; i < len; i++)
-		if (rxs[i] > max)
-			max = rxs[i];
-	return max;
-}
-
 void getdata(struct iface *ifa, double delay, int cols, int opts) {
+	int i;
 	static long long rx, tx;
 	double prefix;
 
@@ -277,8 +269,14 @@ void getdata(struct iface *ifa, double delay, int cols, int opts) {
 		if (ifa->txs[cols-1] > ifa->txmax)
 			ifa->txmax = ifa->txs[cols-1];
 
-		ifa->rxgraphmax = getlargest(ifa->rxs, cols);
-		ifa->txgraphmax = getlargest(ifa->txs, cols);
+		ifa->rxgraphmax = 0;
+		ifa->txgraphmax = 0;
+		for (i = 0; i < cols; i++) {
+			if (ifa->rxs[i] > ifa->rxgraphmax)
+				ifa->rxgraphmax = ifa->rxs[i];
+			if (ifa->txs[i] > ifa->txgraphmax)
+				ifa->txgraphmax = ifa->txs[i];
+		}
 
 		if (opts & UGMAX) {
 			if (ifa->rxgraphmax > ifa->txgraphmax)
@@ -308,9 +306,9 @@ int main(int argc, char *argv[]) {
 			eprintf("%s %s\n", argv[0], VERSION);
 		else if (!strcmp("-n", argv[i]))
 			opts |= NOCOLORS;
-		if (!strcmp("-s", argv[i]))
+		else if (!strcmp("-s", argv[i]))
 			opts |= SIUNITS;
-		if (!strcmp("-u", argv[i]))
+		else if (!strcmp("-u", argv[i]))
 			opts |= UGMAX;
 		else if (argv[i+1] == NULL || argv[i+1][0] == '-')
 			eprintf("usage: %s [options]\n"
