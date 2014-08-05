@@ -22,14 +22,6 @@
 
 #define VERSION "0.3"
 
-enum {
-	SIUNITS = 1 << 0,
-	NOCOLORS = 1 << 1,
-	FIXEDLINES = 1 << 2,
-	KEYPRESSED = 1 << 3,
-	UGMAX = 1 << 4,
-};
-
 struct iface {
 	char ifname[IFNAMSIZ];
 	long long rx;
@@ -73,7 +65,7 @@ void *ecalloc(size_t nmemb, size_t size) {
 }
 
 size_t strlcpy(char *dest, const char *src, size_t size) {
-	size_t len;
+	size_t len = 0;
 	size_t slen = strlen(src);
 	if (size) {
 		len = slen >= size ? size - 1 : slen;
@@ -112,20 +104,20 @@ void scalerxs(double **rxs, int cols, int colsold) {
 	free(rxstmp);
 }
 
-void scaledata(double raw, int opts, double *data, const char **unit) {
+void scaledata(double raw, double *data, const char **unit, int siunits) {
 	int i;
 	double prefix;
 	static const char iec[][4] = { "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" };
 	static const char si[][3] = { "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
 
-	prefix = (opts & SIUNITS) ? 1000.0 : 1024.0;
+	prefix = siunits ? 1000.0 : 1024.0;
 	*data = raw;
 	for (i = 0; *data >= prefix && i < 8; i++)
 		*data /= prefix;
-	*unit = (opts & SIUNITS) ? si[i] : iec[i];
+	*unit = siunits ? si[i] : iec[i];
 }
 
-void printrxsw(WINDOW *win, double *rxs, double graphmax, int lines, int cols, int color, int opts) {
+void printgraphw(WINDOW *win, double *rxs, double graphmax, int siunits, int lines, int cols, int color) {
 	int y, x;
 	double data;
 	const char *unit;
@@ -142,13 +134,13 @@ void printrxsw(WINDOW *win, double *rxs, double graphmax, int lines, int cols, i
 			} else
 				waddch(win, ' ');
 	wattroff(win, color);
-	scaledata(graphmax, opts, &data, &unit);
+	scaledata(graphmax, &data, &unit, siunits);
 	mvwprintw(win, 0, 0, "%.2f %s/s", graphmax, unit);
 	mvwprintw(win, lines-1, 0, "%.2f %s/s", 0.0, unit);
 	wnoutrefresh(win);
 }
 
-void printstatsw(WINDOW *win, struct iface ifa, int cols, int opts) {
+void printstatsw(WINDOW *win, struct iface ifa, int siunits, int cols) {
 	int colrx, coltx;
 	double data;
 	const char *unit;
@@ -160,19 +152,19 @@ void printstatsw(WINDOW *win, struct iface ifa, int cols, int opts) {
 	fmt = "%6s %.2f %s/s";
 	colrx = cols / 4 - 8;
 	coltx = colrx + cols / 2 + 1;
-	scaledata(ifa.rxs[cols-1], opts, &data, &unit);
+	scaledata(ifa.rxs[cols-1], &data, &unit, siunits);
 	mvwprintw(win, line, colrx, fmt, "RX:", data, unit);
-	scaledata(ifa.txs[cols-1], opts, &data, &unit);
+	scaledata(ifa.txs[cols-1], &data, &unit, siunits);
 	mvwprintw(win, line++, coltx, fmt, "TX:", data, unit);
 
-	scaledata(ifa.rxmax, opts, &data, &unit);
+	scaledata(ifa.rxmax, &data, &unit, siunits);
 	mvwprintw(win, line, colrx, fmt, "max:", data, unit);
-	scaledata(ifa.txmax, opts, &data, &unit);
+	scaledata(ifa.txmax, &data, &unit, siunits);
 	mvwprintw(win, line++, coltx, fmt, "max:", data, unit);
 
-	scaledata(ifa.rx / 1024, opts, &data, &unit);
+	scaledata(ifa.rx / 1024, &data, &unit, siunits);
 	mvwprintw(win, line, colrx, fmt, "total:", data, unit);
-	scaledata(ifa.tx / 1024, opts, &data, &unit);
+	scaledata(ifa.tx / 1024, &data, &unit, siunits);
 	mvwprintw(win, line++, coltx, fmt, "total:", data, unit);
 
 	wnoutrefresh(win);
@@ -200,7 +192,7 @@ void getcounters(char *ifname, long long *rx, long long *tx) {
 	freeifaddrs(ifas);
 
 	if (*rx == -1 || *tx == -1)
-		eprintf("can't read rx and tx bytes\n");
+		eprintf("can't read rx and tx bytes for %s\n", ifname);
 }
 
 #elif __OpenBSD__
@@ -224,7 +216,7 @@ void getcounters(char *ifname, long long *rx, long long *tx) {
 	sysctl(mib, 6, NULL, &sz, NULL, 0);
 	buf = emalloc(sz);
 	if (sysctl(mib, 6, buf, &sz, NULL, 0) < 0)
-		eprintf("can't read rx and tx bytes\n");
+		eprintf("can't read rx and tx bytes for %s\n", ifname);
 
 	for (next = buf; next < buf + sz; next += ifm->ifm_msglen) {
 		ifm = (struct if_msghdr *)next;
@@ -245,22 +237,22 @@ void getcounters(char *ifname, long long *rx, long long *tx) {
 	free(buf);
 
 	if (*rx == -1 || *tx == -1)
-		eprintf("can't read rx and tx bytes\n");
+		eprintf("can't read rx and tx bytes for %s\n", ifname);
 }
 #endif
 
-void getdata(struct iface *ifa, double delay, int cols, int opts) {
+void getdata(struct iface *ifa, int siunits, double delay, int cols, int syncgraphmax) {
 	int i;
 	static long long rx, tx;
 	double prefix;
 
-	if (rx > 0 && tx > 0 && resize == 0 && !(opts & KEYPRESSED)) {
+	if (rx > 0 && tx > 0 && resize == 0) {
 		getcounters(ifa->ifname, &ifa->rx, &ifa->tx);
 
 		memmove(ifa->rxs, ifa->rxs+1, sizeof(double)*(cols-1));
 		memmove(ifa->txs, ifa->txs+1, sizeof(double)*(cols-1));
 
-		prefix = (opts & SIUNITS) ? 1000.0 : 1024.0;
+		prefix = siunits ? 1000.0 : 1024.0;
 		ifa->rxs[cols-1] = (ifa->rx - rx) / prefix / delay;
 		ifa->txs[cols-1] = (ifa->tx - tx) / prefix / delay;
 
@@ -278,7 +270,7 @@ void getdata(struct iface *ifa, double delay, int cols, int opts) {
 				ifa->txgraphmax = ifa->txs[i];
 		}
 
-		if (opts & UGMAX) {
+		if (syncgraphmax) {
 			if (ifa->rxgraphmax > ifa->txgraphmax)
 				ifa->rxgraphmax = ifa->txgraphmax;
 			else
@@ -291,13 +283,17 @@ void getdata(struct iface *ifa, double delay, int cols, int opts) {
 
 int main(int argc, char *argv[]) {
 	int i;
-	int opts = 0;
 	int linesold, colsold;
-	int graphlines, statslines = 3;
+	int graphlines = 0, statslines = 3;
 	double delay = 1.0;
 	char key = ERR;
 	struct iface ifa;
 	WINDOW *titlebar, *rxgraph, *txgraph, *stats;
+
+	int siunits = 0;
+	int colors = 1;
+	int fixedlines = 0;
+	int syncgraphmax = 0;
 
 	memset(&ifa, 0, sizeof ifa);
 
@@ -305,11 +301,11 @@ int main(int argc, char *argv[]) {
 		if (!strcmp("-v", argv[i]))
 			eprintf("%s %s\n", argv[0], VERSION);
 		else if (!strcmp("-n", argv[i]))
-			opts |= NOCOLORS;
+			colors = 0;
 		else if (!strcmp("-s", argv[i]))
-			opts |= SIUNITS;
+			siunits = 1;
 		else if (!strcmp("-u", argv[i]))
-			opts |= UGMAX;
+			syncgraphmax = 1;
 		else if (argv[i+1] == NULL || argv[i+1][0] == '-')
 			eprintf("usage: %s [options]\n"
 					"\n"
@@ -321,13 +317,14 @@ int main(int argc, char *argv[]) {
 					"\n"
 					"-i <interface>    network interface\n"
 					"-d <seconds>      redraw delay\n"
-					"-l <lines>        fixed graph height\n", argv[0]);
+					"-l <lines>        fixed graph height\n"
+					, argv[0]);
 		else if (!strcmp("-d", argv[i]))
 			delay = strtod(argv[++i], NULL);
 		else if (!strcmp("-i", argv[i]))
 			strlcpy(ifa.ifname, argv[++i], IFNAMSIZ);
 		else if (!strcmp("-l", argv[i])) {
-			opts |= FIXEDLINES;
+			fixedlines = 1;
 			graphlines = strtol(argv[++i], NULL, 10);
 		}
 	}
@@ -342,7 +339,7 @@ int main(int argc, char *argv[]) {
 	noecho();
 	keypad(stdscr, TRUE);
 	timeout(delay * 1000);
-	if (!(opts & NOCOLORS) && has_colors()) {
+	if (colors && has_colors()) {
 		start_color();
 		use_default_colors();
 		init_pair(1, COLOR_GREEN, -1);
@@ -353,27 +350,23 @@ int main(int argc, char *argv[]) {
 	ifa.txs = ecalloc(COLS, sizeof(double));
 	mvprintw(0, 0, "collecting data from %s for %.2f seconds\n", ifa.ifname, delay);
 
-	if (!(opts & FIXEDLINES))
+	if (fixedlines == 0)
 		graphlines = (LINES-statslines-1)/2;
 	titlebar = newwin(1, COLS, 0, 0);
 	rxgraph = newwin(graphlines, COLS, 1, 0);
 	txgraph = newwin(graphlines, COLS, graphlines+1, 0);
 	stats = newwin(statslines, COLS, LINES-statslines, 0);
-	getdata(&ifa, delay, COLS, opts);
+	getdata(&ifa, siunits, delay, COLS, syncgraphmax);
 
 	while (key != 'q') {
 		key = getch();
-		if (key != ERR)
-			opts |= KEYPRESSED;
-		getdata(&ifa, delay, COLS, opts);
-
-		if (resize || key == 'r') {
+		if (resize || key != ERR) {
 			linesold = LINES;
 			colsold = COLS;
 			endwin();
 			refresh();
 			clear();
-			if (LINES != linesold && !(opts & FIXEDLINES))
+			if (LINES != linesold && fixedlines == 0)
 				graphlines = (LINES-statslines-1)/2;
 			scalerxs(&ifa.rxs, COLS, colsold);
 			scalerxs(&ifa.txs, COLS, colsold);
@@ -388,14 +381,14 @@ int main(int argc, char *argv[]) {
 			resize = 0;
 		}
 
+		getdata(&ifa, siunits, delay, COLS, syncgraphmax);
+
 		mvwprintw(titlebar, 0, COLS/2-7, "interface: %s\n", ifa.ifname);
 		wnoutrefresh(titlebar);
-		printrxsw(rxgraph, ifa.rxs, ifa.rxgraphmax, graphlines, COLS, COLOR_PAIR(1), opts);
-		printrxsw(txgraph, ifa.txs, ifa.txgraphmax, graphlines, COLS, COLOR_PAIR(2), opts);
-		printstatsw(stats, ifa, COLS, opts);
+		printgraphw(rxgraph, ifa.rxs, ifa.rxgraphmax, siunits, graphlines, COLS, COLOR_PAIR(1));
+		printgraphw(txgraph, ifa.txs, ifa.txgraphmax, siunits, graphlines, COLS, COLOR_PAIR(2));
+		printstatsw(stats, ifa, siunits, COLS);
 		doupdate();
-
-		opts &= ~KEYPRESSED;
 	}
 
 	delwin(titlebar);
