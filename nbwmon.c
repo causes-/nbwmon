@@ -28,10 +28,10 @@ struct iface {
 	long long tx;
 	double *rxs;
 	double *txs;
+	double rxavg;
+	double txavg;
 	double rxmax;
 	double txmax;
-	double rxgraphmax;
-	double txgraphmax;
 };
 
 static sig_atomic_t resize;
@@ -117,26 +117,21 @@ void scaledata(double raw, double *data, const char **unit, int siunits) {
 	*unit = siunits ? si[i] : iec[i];
 }
 
-void printgraphw(WINDOW *win, double *rxs, double graphmax, int siunits, int lines, int cols, int color) {
+void printgraphw(WINDOW *win, double *rxs, double max, int siunits, int lines, int cols, int color) {
 	int y, x;
 	double data;
 	const char *unit;
-	wmove(win, 0, 0);
+	werase(win);
+	wborder(win, '-', ' ', ' ', ' ', ' ', ' ', ' ', ' ');
+	scaledata(max, &data, &unit, siunits);
+	mvwprintw(win, 0, 0, "%.2f %s/s", data, unit);
+	mvwprintw(win, lines-1, 0, "%.1f %s/s", 0.0, unit);
 	wattron(win, color);
-	for (y = lines-1; y >= 0; y--)
+	for (y = 0; y < lines; y++)
 		for (x = 0; x < cols; x++)
-			if (rxs[x] / graphmax * lines > y)
-				waddch(win, '*');
-			else if (x == 0) {
-				wattroff(win, color);
-				waddch(win, '-');
-				wattron(win, color);
-			} else
-				waddch(win, ' ');
+			if (lines - 1 - rxs[x] / max * lines  < y)
+				mvwaddch(win, y, x, '*');
 	wattroff(win, color);
-	scaledata(graphmax, &data, &unit, siunits);
-	mvwprintw(win, 0, 0, "%.2f %s/s", graphmax, unit);
-	mvwprintw(win, lines-1, 0, "%.2f %s/s", 0.0, unit);
 	wnoutrefresh(win);
 }
 
@@ -146,6 +141,7 @@ void printstatsw(WINDOW *win, struct iface ifa, int siunits, int cols) {
 	const char *unit;
 	char *fmt;
 	int line = 0;
+	double prefix = siunits ? 1000.0 : 1024.0;
 
 	werase(win);
 
@@ -157,14 +153,20 @@ void printstatsw(WINDOW *win, struct iface ifa, int siunits, int cols) {
 	scaledata(ifa.txs[cols-1], &data, &unit, siunits);
 	mvwprintw(win, line++, coltx, fmt, "TX:", data, unit);
 
+	scaledata(ifa.rxavg, &data, &unit, siunits);
+	mvwprintw(win, line, colrx, fmt, "avg:", data, unit);
+	scaledata(ifa.txavg, &data, &unit, siunits);
+	mvwprintw(win, line++, coltx, fmt, "avg:", data, unit);
+
 	scaledata(ifa.rxmax, &data, &unit, siunits);
 	mvwprintw(win, line, colrx, fmt, "max:", data, unit);
 	scaledata(ifa.txmax, &data, &unit, siunits);
 	mvwprintw(win, line++, coltx, fmt, "max:", data, unit);
 
-	scaledata(ifa.rx / 1024, &data, &unit, siunits);
+	fmt = "%6s %.2f %s";
+	scaledata(ifa.rx / prefix, &data, &unit, siunits);
 	mvwprintw(win, line, colrx, fmt, "total:", data, unit);
-	scaledata(ifa.tx / 1024, &data, &unit, siunits);
+	scaledata(ifa.tx / prefix, &data, &unit, siunits);
 	mvwprintw(win, line++, coltx, fmt, "total:", data, unit);
 
 	wnoutrefresh(win);
@@ -241,6 +243,15 @@ void getcounters(char *ifname, long long *rx, long long *tx) {
 }
 #endif
 
+double avgrxs(double *rxs, int cols) {
+	int i;
+	double sum = 0;
+	for (i = 0; i < cols; i++)
+		sum += rxs[i];
+	sum /= (cols-1);
+	return sum;
+}
+
 void getdata(struct iface *ifa, int siunits, double delay, int cols, int syncgraphmax) {
 	int i;
 	static long long rx, tx;
@@ -256,25 +267,23 @@ void getdata(struct iface *ifa, int siunits, double delay, int cols, int syncgra
 		ifa->rxs[cols-1] = (ifa->rx - rx) / prefix / delay;
 		ifa->txs[cols-1] = (ifa->tx - tx) / prefix / delay;
 
-		if (ifa->rxs[cols-1] > ifa->rxmax)
-			ifa->rxmax = ifa->rxs[cols-1];
-		if (ifa->txs[cols-1] > ifa->txmax)
-			ifa->txmax = ifa->txs[cols-1];
+		ifa->rxavg = avgrxs(ifa->rxs, cols);
+		ifa->txavg = avgrxs(ifa->txs, cols);
 
-		ifa->rxgraphmax = 0;
-		ifa->txgraphmax = 0;
+		ifa->rxmax = 0;
+		ifa->txmax = 0;
 		for (i = 0; i < cols; i++) {
-			if (ifa->rxs[i] > ifa->rxgraphmax)
-				ifa->rxgraphmax = ifa->rxs[i];
-			if (ifa->txs[i] > ifa->txgraphmax)
-				ifa->txgraphmax = ifa->txs[i];
+			if (ifa->rxs[i] > ifa->rxmax)
+				ifa->rxmax = ifa->rxs[i];
+			if (ifa->txs[i] > ifa->txmax)
+				ifa->txmax = ifa->txs[i];
 		}
 
 		if (syncgraphmax) {
-			if (ifa->rxgraphmax > ifa->txgraphmax)
-				ifa->rxgraphmax = ifa->txgraphmax;
+			if (ifa->rxmax > ifa->txmax)
+				ifa->rxmax = ifa->txmax;
 			else
-				ifa->txgraphmax = ifa->rxgraphmax;
+				ifa->txmax = ifa->rxmax;
 		}
 	}
 
@@ -284,7 +293,7 @@ void getdata(struct iface *ifa, int siunits, double delay, int cols, int syncgra
 int main(int argc, char *argv[]) {
 	int i;
 	int linesold, colsold;
-	int graphlines = 0, statslines = 3;
+	int graphlines = 0, statslines = 4;
 	double delay = 1.0;
 	char key = ERR;
 	struct iface ifa;
@@ -385,8 +394,8 @@ int main(int argc, char *argv[]) {
 
 		mvwprintw(titlebar, 0, COLS/2-7, "interface: %s\n", ifa.ifname);
 		wnoutrefresh(titlebar);
-		printgraphw(rxgraph, ifa.rxs, ifa.rxgraphmax, siunits, graphlines, COLS, COLOR_PAIR(1));
-		printgraphw(txgraph, ifa.txs, ifa.txgraphmax, siunits, graphlines, COLS, COLOR_PAIR(2));
+		printgraphw(rxgraph, ifa.rxs, ifa.rxmax, siunits, graphlines, COLS, COLOR_PAIR(1));
+		printgraphw(txgraph, ifa.txs, ifa.txmax, siunits, graphlines, COLS, COLOR_PAIR(2));
 		printstatsw(stats, ifa, siunits, COLS);
 		doupdate();
 	}

@@ -4,8 +4,9 @@ Ncurses bandwidth monitor.
 
 features
 --------
-Print bandwidth graph.
-Print transfer speed, peak and total traffic.
+Print bandwidth graphs.
+Print current, average and maximum transfer speeds.
+Print total traffic.
 Scale to full window on startup and resize.
 Detect active network interface.
 Support for multiple units.
