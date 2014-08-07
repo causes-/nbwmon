@@ -20,7 +20,7 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 
-#define VERSION "0.3"
+#define VERSION "0.3.1"
 
 struct iface {
 	char ifname[IFNAMSIZ];
@@ -65,14 +65,16 @@ void *ecalloc(size_t nmemb, size_t size) {
 }
 
 size_t strlcpy(char *dest, const char *src, size_t size) {
-	size_t len = 0;
-	size_t slen = strlen(src);
+	size_t len = strlen(src);
 	if (size) {
-		len = slen >= size ? size - 1 : slen;
-		memcpy(dest, src, len);
-		dest[len] = '\0';
+		if (len >= size)
+			size -= 1;
+		else
+			size = len;
+		memcpy(dest, src, size);
+		dest[size] = '\0';
 	}
-	return len;
+	return size;
 }
 
 void detectiface(char *ifname) {
@@ -252,7 +254,7 @@ double avgrxs(double *rxs, int cols) {
 	return sum;
 }
 
-void getdata(struct iface *ifa, int siunits, double delay, int cols, int syncgraphmax) {
+void getdata(struct iface *ifa, int siunits, double delay, int cols) {
 	int i;
 	static long long rx, tx;
 	double prefix;
@@ -277,13 +279,6 @@ void getdata(struct iface *ifa, int siunits, double delay, int cols, int syncgra
 				ifa->rxmax = ifa->rxs[i];
 			if (ifa->txs[i] > ifa->txmax)
 				ifa->txmax = ifa->txs[i];
-		}
-
-		if (syncgraphmax) {
-			if (ifa->rxmax > ifa->txmax)
-				ifa->rxmax = ifa->txmax;
-			else
-				ifa->txmax = ifa->rxmax;
 		}
 	}
 
@@ -360,16 +355,27 @@ int main(int argc, char *argv[]) {
 	mvprintw(0, 0, "collecting data from %s for %.2f seconds\n", ifa.ifname, delay);
 
 	if (fixedlines == 0)
-		graphlines = (LINES-statslines-1)/2;
+		graphlines = (LINES-1-statslines)/2;
 	titlebar = newwin(1, COLS, 0, 0);
 	rxgraph = newwin(graphlines, COLS, 1, 0);
 	txgraph = newwin(graphlines, COLS, graphlines+1, 0);
 	stats = newwin(statslines, COLS, LINES-statslines, 0);
-	getdata(&ifa, siunits, delay, COLS, syncgraphmax);
+	getdata(&ifa, siunits, delay, COLS);
 
 	while (key != 'q') {
 		key = getch();
-		if (resize || key != ERR) {
+		if (key != ERR)
+			resize = 1;
+
+		getdata(&ifa, siunits, delay, COLS);
+		if (syncgraphmax) {
+			if (ifa.rxmax > ifa.txmax)
+				ifa.rxmax = ifa.txmax;
+			else
+				ifa.txmax = ifa.rxmax;
+		}
+
+		if (resize) {
 			linesold = LINES;
 			colsold = COLS;
 			endwin();
@@ -389,8 +395,6 @@ int main(int argc, char *argv[]) {
 			werase(stats);
 			resize = 0;
 		}
-
-		getdata(&ifa, siunits, delay, COLS, syncgraphmax);
 
 		mvwprintw(titlebar, 0, COLS/2-7, "interface: %s\n", ifa.ifname);
 		wnoutrefresh(titlebar);
