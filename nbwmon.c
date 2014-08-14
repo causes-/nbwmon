@@ -50,6 +50,24 @@ void eprintf(const char *fmt, ...) {
 	exit(EXIT_FAILURE);
 }
 
+long estrtol(const char *str) {
+	char *ep;
+	long l;
+	l = strtol(str, &ep, 10);
+	if (!l || *ep != '\0' || ep == str)
+		eprintf("invalid number: %s\n", str);
+	return l;
+}
+
+double estrtod(const char *str) {
+	char *ep;
+	double d;
+	d = strtod(str, &ep);
+	if (!d || *ep != '\0' || ep == str)
+		eprintf("invalid number: %s\n", str);
+	return d;
+}
+
 void *emalloc(size_t size) {
 	void *p = malloc(size);
 	if (!p)
@@ -254,8 +272,16 @@ double avgrxs(double *rxs, int cols) {
 	return sum;
 }
 
-void getdata(struct iface *ifa, int siunits, double delay, int cols) {
+double maxrxs(double *rxs, int cols) {
 	int i;
+	double max = 0;
+	for (i = 0; i < cols; i++)
+		if (rxs[i] > max)
+			max = rxs[i];
+	return max;
+}
+
+void getdata(struct iface *ifa, int siunits, double delay, int cols) {
 	static long long rx, tx;
 	double prefix;
 
@@ -269,17 +295,11 @@ void getdata(struct iface *ifa, int siunits, double delay, int cols) {
 		ifa->rxs[cols-1] = (ifa->rx - rx) / prefix / delay;
 		ifa->txs[cols-1] = (ifa->tx - tx) / prefix / delay;
 
+		ifa->rxmax = maxrxs(ifa->rxs, cols);
+		ifa->txmax = maxrxs(ifa->txs, cols);
+
 		ifa->rxavg = avgrxs(ifa->rxs, cols);
 		ifa->txavg = avgrxs(ifa->txs, cols);
-
-		ifa->rxmax = 0;
-		ifa->txmax = 0;
-		for (i = 0; i < cols; i++) {
-			if (ifa->rxs[i] > ifa->rxmax)
-				ifa->rxmax = ifa->rxs[i];
-			if (ifa->txs[i] > ifa->txmax)
-				ifa->txmax = ifa->txs[i];
-		}
 	}
 
 	getcounters(ifa->ifname, &rx, &tx);
@@ -324,12 +344,12 @@ int main(int argc, char *argv[]) {
 					"-l <lines>        fixed graph height\n"
 					, argv[0]);
 		else if (!strcmp("-d", argv[i]))
-			delay = strtod(argv[++i], NULL);
+			delay = estrtod(argv[++i]);
 		else if (!strcmp("-i", argv[i]))
 			strlcpy(ifa.ifname, argv[++i], IFNAMSIZ);
 		else if (!strcmp("-l", argv[i])) {
 			fixedlines = 1;
-			graphlines = strtol(argv[++i], NULL, 10);
+			graphlines = estrtol(argv[++i]);
 		}
 	}
 
@@ -380,7 +400,6 @@ int main(int argc, char *argv[]) {
 			colsold = COLS;
 			endwin();
 			refresh();
-			clear();
 			if (LINES != linesold && fixedlines == 0)
 				graphlines = (LINES-statslines-1)/2;
 			scalerxs(&ifa.rxs, COLS, colsold);
@@ -392,10 +411,10 @@ int main(int argc, char *argv[]) {
 			wresize(stats, statslines, COLS);
 			mvwin(txgraph, graphlines+1, 0);
 			mvwin(stats, LINES-statslines, 0);
-			werase(stats);
 			resize = 0;
 		}
 
+		werase(titlebar);
 		mvwprintw(titlebar, 0, COLS/2-7, "interface: %s\n", ifa.ifname);
 		wnoutrefresh(titlebar);
 		printgraphw(rxgraph, ifa.rxs, ifa.rxmax, siunits, graphlines, COLS, COLOR_PAIR(1));
