@@ -54,8 +54,7 @@ void eprintf(const char *fmt, ...) {
 
 long estrtol(const char *str) {
 	char *ep;
-	long l;
-	l = strtol(str, &ep, 10);
+	long l = strtol(str, &ep, 10);
 	if (!l || *ep != '\0' || ep == str)
 		eprintf("invalid number: %s\n", str);
 	return l;
@@ -63,8 +62,7 @@ long estrtol(const char *str) {
 
 double estrtod(const char *str) {
 	char *ep;
-	double d;
-	d = strtod(str, &ep);
+	double d = strtod(str, &ep);
 	if (!d || *ep != '\0' || ep == str)
 		eprintf("invalid number: %s\n", str);
 	return d;

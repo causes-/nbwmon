@@ -1,4 +1,6 @@
-CFLAGS+=-std=c99 -pedantic -Wall -lncurses
+CFLAGS+=-std=c99 -pedantic -Wall
+LDFLAGS+=-lncurses
+
 BIN=nbwmon
 
 all: $(BIN)
