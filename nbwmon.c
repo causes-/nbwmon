@@ -22,6 +22,8 @@
 
 #define VERSION "0.3.1"
 
+#define MAX(A,B) ((A) > (B) ? (A) : (B))
+
 struct iface {
 	char ifname[IFNAMSIZ];
 	long long rx;
@@ -158,10 +160,10 @@ void printgraphw(WINDOW *win, double *rxs, double max, int siunits, int lines, i
 void printstatsw(WINDOW *win, struct iface ifa, int siunits, int cols) {
 	int colrx, coltx;
 	double data;
+	double prefix;
 	const char *unit;
 	char *fmt;
 	int line = 0;
-	double prefix = siunits ? 1000.0 : 1024.0;
 
 	werase(win);
 
@@ -184,6 +186,7 @@ void printstatsw(WINDOW *win, struct iface ifa, int siunits, int cols) {
 	mvwprintw(win, line++, coltx, fmt, "max:", data, unit);
 
 	fmt = "%6s %.2f %s";
+	prefix = siunits ? 1000.0 : 1024.0;
 	scaledata(ifa.rx / prefix, &data, &unit, siunits);
 	mvwprintw(win, line, colrx, fmt, "total:", data, unit);
 	scaledata(ifa.tx / prefix, &data, &unit, siunits);
@@ -285,7 +288,7 @@ void getdata(struct iface *ifa, int siunits, double delay, int cols) {
 	static long long rx, tx;
 	double prefix;
 
-	if (rx > 0 && tx > 0 && resize == 0) {
+	if (rx && tx && !resize) {
 		getcounters(ifa->ifname, &ifa->rx, &ifa->tx);
 
 		memmove(ifa->rxs, ifa->rxs+1, sizeof(double)*(cols-1));
@@ -308,11 +311,12 @@ void getdata(struct iface *ifa, int siunits, double delay, int cols) {
 int main(int argc, char *argv[]) {
 	int i;
 	int linesold, colsold;
-	int graphlines = 0, statslines = 4;
+	int graphlines = 0;
+	int statslines = 4;
 	double delay = 1.0;
-	char key = ERR;
+	char key;
 	struct iface ifa;
-	WINDOW *titlebar, *rxgraph, *txgraph, *stats;
+	WINDOW *title, *rxgraph, *txgraph, *stats;
 
 	int siunits = 0;
 	int colors = 1;
@@ -374,38 +378,35 @@ int main(int argc, char *argv[]) {
 	ifa.txs = ecalloc(COLS, sizeof(double));
 	mvprintw(0, 0, "collecting data from %s for %.2f seconds\n", ifa.ifname, delay);
 
-	if (fixedlines == 0)
+	if (!fixedlines)
 		graphlines = (LINES-1-statslines)/2;
-	titlebar = newwin(1, COLS, 0, 0);
+	title = newwin(1, COLS, 0, 0);
 	rxgraph = newwin(graphlines, COLS, 1, 0);
 	txgraph = newwin(graphlines, COLS, graphlines+1, 0);
 	stats = newwin(statslines, COLS, LINES-statslines, 0);
 	getdata(&ifa, siunits, delay, COLS);
 
-	while (key != 'q') {
-		key = getch();
+	while ((key = getch()) != 'q') {
 		if (key != ERR)
 			resize = 1;
-
 		getdata(&ifa, siunits, delay, COLS);
-		if (syncgraphmax) {
-			if (ifa.rxmax > ifa.txmax)
-				ifa.rxmax = ifa.txmax;
-			else
-				ifa.txmax = ifa.rxmax;
-		}
+		if (syncgraphmax)
+			ifa.rxmax = ifa.txmax = MAX(ifa.rxmax, ifa.txmax);
 
 		if (resize) {
 			linesold = LINES;
 			colsold = COLS;
 			endwin();
 			refresh();
+
+			if (COLS != colsold) {
+				scalerxs(&ifa.rxs, COLS, colsold);
+				scalerxs(&ifa.txs, COLS, colsold);
+			}
 			if (LINES != linesold && fixedlines == 0)
 				graphlines = (LINES-statslines-1)/2;
-			scalerxs(&ifa.rxs, COLS, colsold);
-			scalerxs(&ifa.txs, COLS, colsold);
 
-			wresize(titlebar, 1, COLS);
+			wresize(title, 1, COLS);
 			wresize(rxgraph, graphlines, COLS);
 			wresize(txgraph, graphlines, COLS);
 			wresize(stats, statslines, COLS);
@@ -414,16 +415,16 @@ int main(int argc, char *argv[]) {
 			resize = 0;
 		}
 
-		werase(titlebar);
-		mvwprintw(titlebar, 0, COLS/2-7, "interface: %s\n", ifa.ifname);
-		wnoutrefresh(titlebar);
+		werase(title);
+		mvwprintw(title, 0, COLS/2-7, "interface: %s\n", ifa.ifname);
+		wnoutrefresh(title);
 		printgraphw(rxgraph, ifa.rxs, ifa.rxmax, siunits, graphlines, COLS, COLOR_PAIR(1));
 		printgraphw(txgraph, ifa.txs, ifa.txmax, siunits, graphlines, COLS, COLOR_PAIR(2));
 		printstatsw(stats, ifa, siunits, COLS);
 		doupdate();
 	}
 
-	delwin(titlebar);
+	delwin(title);
 	delwin(rxgraph);
 	delwin(txgraph);
 	delwin(stats);
