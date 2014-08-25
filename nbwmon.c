@@ -20,7 +20,7 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 
-#define VERSION "0.3.1"
+#define VERSION "0.3.2"
 
 #define MAX(A,B) ((A) > (B) ? (A) : (B))
 

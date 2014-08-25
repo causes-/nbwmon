@@ -1,5 +1,4 @@
-CFLAGS+=-std=c99 -pedantic -Wall
-LDFLAGS+=-lncurses
+CFLAGS+=-std=c99 -pedantic -Wall -lncurses
 
 BIN=nbwmon
 

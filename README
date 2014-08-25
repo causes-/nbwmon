@@ -14,7 +14,7 @@ features
 
 usage
 -----
-usage: nbwmon [options]
+usage: ./nbwmon [options]
 
 -h    help
 -v    version
