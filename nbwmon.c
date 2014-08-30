@@ -116,6 +116,117 @@ void detectiface(char *ifname) {
 	freeifaddrs(ifas);
 }
 
+double avgrxs(double *rxs, int cols) {
+	int i;
+	double sum = 0;
+	for (i = 0; i < cols; i++)
+		sum += rxs[i];
+	sum /= (cols-1);
+	return sum;
+}
+
+double maxrxs(double *rxs, int cols) {
+	int i;
+	double max = 0;
+	for (i = 0; i < cols; i++)
+		if (rxs[i] > max)
+			max = rxs[i];
+	return max;
+}
+
+#ifdef __linux__
+void getcounters(char *ifname, long long *rx, long long *tx) {
+	struct ifaddrs *ifas, *ifa;
+	struct rtnl_link_stats *stats;
+
+	*rx = -1;
+	*tx = -1;
+
+	if (getifaddrs(&ifas) == -1)
+		return;
+	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
+		if (!strcmp(ifa->ifa_name, ifname)) {
+			if (ifa->ifa_addr->sa_family == AF_PACKET && ifa->ifa_data != NULL) {
+				stats = ifa->ifa_data;
+				*rx = stats->rx_bytes;
+				*tx = stats->tx_bytes;
+			}
+		}
+	}
+	freeifaddrs(ifas);
+
+	if (*rx == -1 || *tx == -1)
+		eprintf("can't read rx and tx bytes for %s\n", ifname);
+}
+
+#elif __OpenBSD__
+void getcounters(char *ifname, long long *rx, long long *tx) {
+	int mib[6];
+	char *buf = NULL, *next;
+	size_t sz;
+	struct if_msghdr *ifm;
+	struct sockaddr_dl *sdl;
+
+	*rx = -1;
+	*tx = -1;
+
+	mib[0] = CTL_NET;
+	mib[1] = PF_ROUTE;
+	mib[2] = 0;		/* protocol */
+	mib[3] = 0;		/* wildcard address family */
+	mib[4] = NET_RT_IFLIST;	/* no flags */
+	mib[5] = 0;
+
+	sysctl(mib, 6, NULL, &sz, NULL, 0);
+	buf = emalloc(sz);
+	if (sysctl(mib, 6, buf, &sz, NULL, 0) < 0)
+		eprintf("can't read rx and tx bytes for %s\n", ifname);
+
+	for (next = buf; next < buf + sz; next += ifm->ifm_msglen) {
+		ifm = (struct if_msghdr *)next;
+		if (ifm->ifm_type != RTM_NEWADDR) {
+			if (ifm->ifm_flags & IFF_UP) {
+				sdl = (struct sockaddr_dl *)(ifm + 1);
+				/* search for the right network interface */
+				if (sdl->sdl_family != AF_LINK)
+					continue;
+				if (strncmp(sdl->sdl_data, ifname, sdl->sdl_nlen) != 0)
+					continue;
+				*rx = ifm->ifm_data.ifi_ibytes;
+				*tx = ifm->ifm_data.ifi_obytes;
+				break;
+			}
+		}
+	}
+	free(buf);
+
+	if (*rx == -1 || *tx == -1)
+		eprintf("can't read rx and tx bytes for %s\n", ifname);
+}
+#endif
+
+void getdata(struct iface *ifa, double delay, int cols) {
+	static long long rx, tx;
+
+	if (rx && tx && !resize) {
+		getcounters(ifa->ifname, &ifa->rx, &ifa->tx);
+
+		memmove(ifa->rxs, ifa->rxs+1, sizeof(double)*(cols-1));
+		memmove(ifa->txs, ifa->txs+1, sizeof(double)*(cols-1));
+
+		ifa->rxs[cols-1] = (ifa->rx - rx) / delay;
+		ifa->txs[cols-1] = (ifa->tx - tx) / delay;
+
+		ifa->rxavg = avgrxs(ifa->rxs, cols);
+		ifa->txavg = avgrxs(ifa->txs, cols);
+
+		ifa->rxmax = maxrxs(ifa->rxs, cols);
+		ifa->txmax = maxrxs(ifa->txs, cols);
+	}
+
+	getcounters(ifa->ifname, &rx, &tx);
+}
+
 void scalecols(double **rxs, int cols, int colsold) {
 	double *rxstmp;
 	if (cols == colsold)
@@ -201,117 +312,6 @@ void printstatsw(WINDOW *win, struct iface ifa, bool siunits, int cols) {
 	mvwprintw(win, line++, coltx, fmt, "total:", datastr);
 
 	wnoutrefresh(win);
-}
-
-#ifdef __linux__
-void getcounters(char *ifname, long long *rx, long long *tx) {
-	struct ifaddrs *ifas, *ifa;
-	struct rtnl_link_stats *stats;
-
-	*rx = -1;
-	*tx = -1;
-
-	if (getifaddrs(&ifas) == -1)
-		return;
-	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
-		if (!strcmp(ifa->ifa_name, ifname)) {
-			if (ifa->ifa_addr->sa_family == AF_PACKET && ifa->ifa_data != NULL) {
-				stats = ifa->ifa_data;
-				*rx = stats->rx_bytes;
-				*tx = stats->tx_bytes;
-			}
-		}
-	}
-	freeifaddrs(ifas);
-
-	if (*rx == -1 || *tx == -1)
-		eprintf("can't read rx and tx bytes for %s\n", ifname);
-}
-
-#elif __OpenBSD__
-void getcounters(char *ifname, long long *rx, long long *tx) {
-	int mib[6];
-	char *buf = NULL, *next;
-	size_t sz;
-	struct if_msghdr *ifm;
-	struct sockaddr_dl *sdl;
-
-	*rx = -1;
-	*tx = -1;
-
-	mib[0] = CTL_NET;
-	mib[1] = PF_ROUTE;
-	mib[2] = 0;		/* protocol */
-	mib[3] = 0;		/* wildcard address family */
-	mib[4] = NET_RT_IFLIST;	/* no flags */
-	mib[5] = 0;
-
-	sysctl(mib, 6, NULL, &sz, NULL, 0);
-	buf = emalloc(sz);
-	if (sysctl(mib, 6, buf, &sz, NULL, 0) < 0)
-		eprintf("can't read rx and tx bytes for %s\n", ifname);
-
-	for (next = buf; next < buf + sz; next += ifm->ifm_msglen) {
-		ifm = (struct if_msghdr *)next;
-		if (ifm->ifm_type != RTM_NEWADDR) {
-			if (ifm->ifm_flags & IFF_UP) {
-				sdl = (struct sockaddr_dl *)(ifm + 1);
-				/* search for the right network interface */
-				if (sdl->sdl_family != AF_LINK)
-					continue;
-				if (strncmp(sdl->sdl_data, ifname, sdl->sdl_nlen) != 0)
-					continue;
-				*rx = ifm->ifm_data.ifi_ibytes;
-				*tx = ifm->ifm_data.ifi_obytes;
-				break;
-			}
-		}
-	}
-	free(buf);
-
-	if (*rx == -1 || *tx == -1)
-		eprintf("can't read rx and tx bytes for %s\n", ifname);
-}
-#endif
-
-double avgrxs(double *rxs, int cols) {
-	int i;
-	double sum = 0;
-	for (i = 0; i < cols; i++)
-		sum += rxs[i];
-	sum /= (cols-1);
-	return sum;
-}
-
-double maxrxs(double *rxs, int cols) {
-	int i;
-	double max = 0;
-	for (i = 0; i < cols; i++)
-		if (rxs[i] > max)
-			max = rxs[i];
-	return max;
-}
-
-void getdata(struct iface *ifa, double delay, int cols) {
-	static long long rx, tx;
-
-	if (rx && tx && !resize) {
-		getcounters(ifa->ifname, &ifa->rx, &ifa->tx);
-
-		memmove(ifa->rxs, ifa->rxs+1, sizeof(double)*(cols-1));
-		memmove(ifa->txs, ifa->txs+1, sizeof(double)*(cols-1));
-
-		ifa->rxs[cols-1] = (ifa->rx - rx) / delay;
-		ifa->txs[cols-1] = (ifa->tx - tx) / delay;
-
-		ifa->rxavg = avgrxs(ifa->rxs, cols);
-		ifa->txavg = avgrxs(ifa->txs, cols);
-
-		ifa->rxmax = maxrxs(ifa->rxs, cols);
-		ifa->txmax = maxrxs(ifa->txs, cols);
-	}
-
-	getcounters(ifa->ifname, &rx, &tx);
 }
 
 int main(int argc, char *argv[]) {
