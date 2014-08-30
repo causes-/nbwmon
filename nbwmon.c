@@ -245,6 +245,7 @@ void bytestostr(long in, char *out, bool siunits) {
 	double scaled;
 	double prefix;
 	const char *unit;
+	char *fmt;
 	static const char iec[][4] = { "B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" };
 	static const char si[][3] = { "B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
 
@@ -253,7 +254,8 @@ void bytestostr(long in, char *out, bool siunits) {
 	for (i = 0; scaled >= prefix && i < 9; i++)
 		scaled /= prefix;
 	unit = siunits ? si[i] : iec[i];
-	sprintf(out, "%.2f %s", scaled, unit);
+	fmt = i ? "%.2f %s" : "%.0f %s";
+	sprintf(out, fmt, scaled, unit);
 }
 
 void printgraphw(WINDOW *win, long *rxs, double max, bool siunits,
