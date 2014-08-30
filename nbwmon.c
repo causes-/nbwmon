@@ -13,6 +13,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <stdarg.h>
 #include <string.h>
 #include <signal.h>
@@ -20,7 +21,7 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 
-#define VERSION "0.3.2"
+#define VERSION "0.4"
 
 #define MAX(A,B) ((A) > (B) ? (A) : (B))
 
@@ -115,7 +116,7 @@ void detectiface(char *ifname) {
 	freeifaddrs(ifas);
 }
 
-void scalerxs(double **rxs, int cols, int colsold) {
+void scalecols(double **rxs, int cols, int colsold) {
 	double *rxstmp;
 	if (cols == colsold)
 		return;
@@ -128,30 +129,31 @@ void scalerxs(double **rxs, int cols, int colsold) {
 	free(rxstmp);
 }
 
-void scaledata(double raw, double *data, const char **unit, int siunits) {
+void bytestostr(double in, char *out, int siunits) {
 	int i;
 	double prefix;
-	static const char iec[][4] = { "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" };
-	static const char si[][3] = { "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
+	const char *unit;
+	static const char iec[][4] = { "B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" };
+	static const char si[][3] = { "B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
 
 	prefix = siunits ? 1000.0 : 1024.0;
-	*data = raw;
-	for (i = 0; *data >= prefix && i < 8; i++)
-		*data /= prefix;
-	*unit = siunits ? si[i] : iec[i];
+	for (i = 0; in >= prefix && i < 9; i++)
+		in /= prefix;
+	unit = siunits ? si[i] : iec[i];
+	sprintf(out, "%.2f %s", in, unit);
 }
 
 void printgraphw(WINDOW *win, double *rxs, double max, int siunits,
 		int lines, int cols, int hidescale, int color) {
 	int y, x;
-	double data;
-	const char *unit;
+	char datastr[16];
 	werase(win);
 	if (!hidescale) {
 		wborder(win, '-', ' ', ' ', ' ', ' ', ' ', ' ', ' ');
-		scaledata(max, &data, &unit, siunits);
-		mvwprintw(win, 0, 0, "%.2f %s/s", data, unit);
-		mvwprintw(win, lines-1, 0, "%.1f %s/s", 0.0, unit);
+		bytestostr(max, datastr, siunits);
+		mvwprintw(win, 0, 0, "%s/s", datastr);
+		bytestostr(0.0, datastr, siunits);
+		mvwprintw(win, lines-1, 0, "%s/s", 0.0, datastr);
 	}
 	wattron(win, color);
 	for (y = 0; y < lines; y++)
@@ -164,38 +166,35 @@ void printgraphw(WINDOW *win, double *rxs, double max, int siunits,
 
 void printstatsw(WINDOW *win, struct iface ifa, int siunits, int cols) {
 	int colrx, coltx;
-	double data;
-	double prefix;
-	const char *unit;
+	char datastr[16];
 	char *fmt;
 	int line = 0;
 
 	werase(win);
 
-	fmt = "%6s %.2f %s/s";
+	fmt = "%6s %s/s";
 	colrx = cols / 4 - 8;
 	coltx = colrx + cols / 2 + 1;
-	scaledata(ifa.rxs[cols-1], &data, &unit, siunits);
-	mvwprintw(win, line, colrx, fmt, "RX:", data, unit);
-	scaledata(ifa.txs[cols-1], &data, &unit, siunits);
-	mvwprintw(win, line++, coltx, fmt, "TX:", data, unit);
+	bytestostr(ifa.rxs[cols-1], datastr, siunits);
+	mvwprintw(win, line, colrx, fmt, "RX:", datastr);
+	bytestostr(ifa.txs[cols-1], datastr, siunits);
+	mvwprintw(win, line++, coltx, fmt, "TX:", datastr);
 
-	scaledata(ifa.rxavg, &data, &unit, siunits);
-	mvwprintw(win, line, colrx, fmt, "avg:", data, unit);
-	scaledata(ifa.txavg, &data, &unit, siunits);
-	mvwprintw(win, line++, coltx, fmt, "avg:", data, unit);
+	bytestostr(ifa.rxavg, datastr, siunits);
+	mvwprintw(win, line, colrx, fmt, "avg:", datastr);
+	bytestostr(ifa.txavg, datastr, siunits);
+	mvwprintw(win, line++, coltx, fmt, "avg:", datastr);
 
-	scaledata(ifa.rxmax, &data, &unit, siunits);
-	mvwprintw(win, line, colrx, fmt, "max:", data, unit);
-	scaledata(ifa.txmax, &data, &unit, siunits);
-	mvwprintw(win, line++, coltx, fmt, "max:", data, unit);
+	bytestostr(ifa.rxmax, datastr, siunits);
+	mvwprintw(win, line, colrx, fmt, "max:", datastr);
+	bytestostr(ifa.txmax, datastr, siunits);
+	mvwprintw(win, line++, coltx, fmt, "max:", datastr);
 
-	fmt = "%6s %.2f %s";
-	prefix = siunits ? 1000.0 : 1024.0;
-	scaledata(ifa.rx / prefix, &data, &unit, siunits);
-	mvwprintw(win, line, colrx, fmt, "total:", data, unit);
-	scaledata(ifa.tx / prefix, &data, &unit, siunits);
-	mvwprintw(win, line++, coltx, fmt, "total:", data, unit);
+	fmt = "%6s %s";
+	bytestostr(ifa.rx, datastr, siunits);
+	mvwprintw(win, line, colrx, fmt, "total:", datastr);
+	bytestostr(ifa.tx, datastr, siunits);
+	mvwprintw(win, line++, coltx, fmt, "total:", datastr);
 
 	wnoutrefresh(win);
 }
@@ -291,7 +290,6 @@ double maxrxs(double *rxs, int cols) {
 
 void getdata(struct iface *ifa, int siunits, double delay, int cols) {
 	static long long rx, tx;
-	double prefix;
 
 	if (rx && tx && !resize) {
 		getcounters(ifa->ifname, &ifa->rx, &ifa->tx);
@@ -299,15 +297,14 @@ void getdata(struct iface *ifa, int siunits, double delay, int cols) {
 		memmove(ifa->rxs, ifa->rxs+1, sizeof(double)*(cols-1));
 		memmove(ifa->txs, ifa->txs+1, sizeof(double)*(cols-1));
 
-		prefix = siunits ? 1000.0 : 1024.0;
-		ifa->rxs[cols-1] = (ifa->rx - rx) / prefix / delay;
-		ifa->txs[cols-1] = (ifa->tx - tx) / prefix / delay;
-
-		ifa->rxmax = maxrxs(ifa->rxs, cols);
-		ifa->txmax = maxrxs(ifa->txs, cols);
+		ifa->rxs[cols-1] = (ifa->rx - rx) / delay;
+		ifa->txs[cols-1] = (ifa->tx - tx) / delay;
 
 		ifa->rxavg = avgrxs(ifa->rxs, cols);
 		ifa->txavg = avgrxs(ifa->txs, cols);
+
+		ifa->rxmax = maxrxs(ifa->rxs, cols);
+		ifa->txmax = maxrxs(ifa->txs, cols);
 	}
 
 	getcounters(ifa->ifname, &rx, &tx);
@@ -408,8 +405,8 @@ int main(int argc, char *argv[]) {
 			refresh();
 
 			if (COLS != colsold) {
-				scalerxs(&ifa.rxs, COLS, colsold);
-				scalerxs(&ifa.txs, COLS, colsold);
+				scalecols(&ifa.rxs, COLS, colsold);
+				scalecols(&ifa.txs, COLS, colsold);
 			}
 			if (LINES != linesold && !fixedlines)
 				graphlines = (LINES-1-statslines)/2;
