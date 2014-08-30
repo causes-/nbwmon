@@ -29,12 +29,12 @@ struct iface {
 	char ifname[IFNAMSIZ];
 	long long rx;
 	long long tx;
-	double *rxs;
-	double *txs;
-	double rxavg;
-	double txavg;
-	double rxmax;
-	double txmax;
+	long *rxs;
+	long *txs;
+	long rxavg;
+	long txavg;
+	long rxmax;
+	long txmax;
 };
 
 static sig_atomic_t resize;
@@ -116,18 +116,18 @@ void detectiface(char *ifname) {
 	freeifaddrs(ifas);
 }
 
-double avgrxs(double *rxs, int cols) {
+long avgrxs(long *rxs, int cols) {
 	int i;
-	double sum = 0;
+	long sum = 0;
 	for (i = 0; i < cols; i++)
 		sum += rxs[i];
 	sum /= (cols-1);
 	return sum;
 }
 
-double maxrxs(double *rxs, int cols) {
+long maxrxs(long *rxs, int cols) {
 	int i;
-	double max = 0;
+	long max = 0;
 	for (i = 0; i < cols; i++)
 		if (rxs[i] > max)
 			max = rxs[i];
@@ -211,8 +211,8 @@ void getdata(struct iface *ifa, double delay, int cols) {
 	if (rx && tx && !resize) {
 		getcounters(ifa->ifname, &ifa->rx, &ifa->tx);
 
-		memmove(ifa->rxs, ifa->rxs+1, sizeof(double)*(cols-1));
-		memmove(ifa->txs, ifa->txs+1, sizeof(double)*(cols-1));
+		memmove(ifa->rxs, ifa->rxs+1, sizeof(long) * (cols-1));
+		memmove(ifa->txs, ifa->txs+1, sizeof(long) * (cols-1));
 
 		ifa->rxs[cols-1] = (ifa->rx - rx) / delay;
 		ifa->txs[cols-1] = (ifa->tx - tx) / delay;
@@ -227,34 +227,36 @@ void getdata(struct iface *ifa, double delay, int cols) {
 	getcounters(ifa->ifname, &rx, &tx);
 }
 
-void scalecols(double **rxs, int cols, int colsold) {
-	double *rxstmp;
+void scalecols(long **rxs, int cols, int colsold) {
+	long *rxstmp;
 	if (cols == colsold)
 		return;
 	rxstmp = *rxs;
-	*rxs = ecalloc(cols, sizeof(double));
+	*rxs = ecalloc(cols, sizeof(long));
 	if (cols > colsold)
-		memcpy(*rxs+(cols-colsold), rxstmp, sizeof(double)*colsold);
+		memcpy(*rxs+(cols-colsold), rxstmp, sizeof(long) * colsold);
 	else
-		memcpy(*rxs, rxstmp+(colsold-cols), sizeof(double)*cols);
+		memcpy(*rxs, rxstmp+(colsold-cols), sizeof(long) * cols);
 	free(rxstmp);
 }
 
-void bytestostr(double in, char *out, bool siunits) {
+void bytestostr(long in, char *out, bool siunits) {
 	int i;
+	double scaled;
 	double prefix;
 	const char *unit;
 	static const char iec[][4] = { "B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" };
 	static const char si[][3] = { "B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
 
+	scaled = in;
 	prefix = siunits ? 1000.0 : 1024.0;
-	for (i = 0; in >= prefix && i < 9; i++)
-		in /= prefix;
+	for (i = 0; scaled >= prefix && i < 9; i++)
+		scaled /= prefix;
 	unit = siunits ? si[i] : iec[i];
-	sprintf(out, "%.2f %s", in, unit);
+	sprintf(out, "%.2f %s", scaled, unit);
 }
 
-void printgraphw(WINDOW *win, double *rxs, double max, bool siunits,
+void printgraphw(WINDOW *win, long *rxs, double max, bool siunits,
 		int lines, int cols, bool hidescale, int color) {
 	int y, x;
 	char datastr[16];
@@ -384,8 +386,8 @@ int main(int argc, char *argv[]) {
 	}
 
 	signal(SIGWINCH, sighandler);
-	ifa.rxs = ecalloc(COLS, sizeof(double));
-	ifa.txs = ecalloc(COLS, sizeof(double));
+	ifa.rxs = ecalloc(COLS, sizeof(long));
+	ifa.txs = ecalloc(COLS, sizeof(long));
 	mvprintw(0, 0, "collecting data from %s for %.2f seconds\n", ifa.ifname, delay);
 
 	if (!fixedlines)
