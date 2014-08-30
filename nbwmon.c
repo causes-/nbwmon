@@ -129,7 +129,7 @@ void scalecols(double **rxs, int cols, int colsold) {
 	free(rxstmp);
 }
 
-void bytestostr(double in, char *out, int siunits) {
+void bytestostr(double in, char *out, bool siunits) {
 	int i;
 	double prefix;
 	const char *unit;
@@ -143,11 +143,13 @@ void bytestostr(double in, char *out, int siunits) {
 	sprintf(out, "%.2f %s", in, unit);
 }
 
-void printgraphw(WINDOW *win, double *rxs, double max, int siunits,
-		int lines, int cols, int hidescale, int color) {
+void printgraphw(WINDOW *win, double *rxs, double max, bool siunits,
+		int lines, int cols, bool hidescale, int color) {
 	int y, x;
 	char datastr[16];
+
 	werase(win);
+
 	if (!hidescale) {
 		wborder(win, '-', ' ', ' ', ' ', ' ', ' ', ' ', ' ');
 		bytestostr(max, datastr, siunits);
@@ -155,16 +157,18 @@ void printgraphw(WINDOW *win, double *rxs, double max, int siunits,
 		bytestostr(0.0, datastr, siunits);
 		mvwprintw(win, lines-1, 0, "%s/s", 0.0, datastr);
 	}
+
 	wattron(win, color);
 	for (y = 0; y < lines; y++)
 		for (x = 0; x < cols; x++)
 			if (lines - 1 - rxs[x] / max * lines  < y)
 				mvwaddch(win, y, x, '*');
 	wattroff(win, color);
+
 	wnoutrefresh(win);
 }
 
-void printstatsw(WINDOW *win, struct iface ifa, int siunits, int cols) {
+void printstatsw(WINDOW *win, struct iface ifa, bool siunits, int cols) {
 	int colrx, coltx;
 	char datastr[16];
 	char *fmt;
@@ -288,7 +292,7 @@ double maxrxs(double *rxs, int cols) {
 	return max;
 }
 
-void getdata(struct iface *ifa, int siunits, double delay, int cols) {
+void getdata(struct iface *ifa, double delay, int cols) {
 	static long long rx, tx;
 
 	if (rx && tx && !resize) {
@@ -319,11 +323,12 @@ int main(int argc, char *argv[]) {
 	char key;
 	struct iface ifa;
 	WINDOW *title, *rxgraph, *txgraph, *stats;
-	int colors = 1;
-	int siunits = 0;
-	int hidescale = 0;
-	int syncgraphmax = 0;
-	int fixedlines = 0;
+
+	bool colors = true;
+	bool siunits = false;
+	bool hidescale = false;
+	bool syncgraphmax = false;
+	bool fixedlines = false;
 
 	memset(&ifa, 0, sizeof ifa);
 
@@ -331,13 +336,13 @@ int main(int argc, char *argv[]) {
 		if (!strcmp("-v", argv[i]))
 			eprintf("%s-%s\n", argv[0], VERSION);
 		else if (!strcmp("-n", argv[i]))
-			colors = 0;
+			colors = false;
 		else if (!strcmp("-s", argv[i]))
-			siunits = 1;
+			siunits = true;
 		else if (!strcmp("-S", argv[i]))
-			hidescale = 1;
+			hidescale = true;
 		else if (!strcmp("-u", argv[i]))
-			syncgraphmax = 1;
+			syncgraphmax = true;
 		else if (argv[i+1] == NULL || argv[i+1][0] == '-')
 			eprintf("usage: %s [options]\n"
 					"\n"
@@ -358,10 +363,9 @@ int main(int argc, char *argv[]) {
 			strlcpy(ifa.ifname, argv[++i], IFNAMSIZ);
 		else if (!strcmp("-l", argv[i])) {
 			graphlines = estrtol(argv[++i]);
-			fixedlines = 1;
+			fixedlines = true;
 		}
 	}
-
 	if (ifa.ifname[0] == '\0')
 		detectiface(ifa.ifname);
 	if (ifa.ifname[0] == '\0')
@@ -378,6 +382,7 @@ int main(int argc, char *argv[]) {
 		init_pair(1, COLOR_GREEN, -1);
 		init_pair(2, COLOR_RED, -1);
 	}
+
 	signal(SIGWINCH, sighandler);
 	ifa.rxs = ecalloc(COLS, sizeof(double));
 	ifa.txs = ecalloc(COLS, sizeof(double));
@@ -389,12 +394,13 @@ int main(int argc, char *argv[]) {
 	rxgraph = newwin(graphlines, COLS, 1, 0);
 	txgraph = newwin(graphlines, COLS, graphlines+1, 0);
 	stats = newwin(LINES-(graphlines*2+1), COLS, graphlines*2+1, 0);
-	getdata(&ifa, siunits, delay, COLS);
+	getdata(&ifa, delay, COLS);
 
 	while ((key = getch()) != 'q') {
 		if (key != ERR)
 			resize = 1;
-		getdata(&ifa, siunits, delay, COLS);
+
+		getdata(&ifa, delay, COLS);
 		if (syncgraphmax)
 			ifa.rxmax = ifa.txmax = MAX(ifa.rxmax, ifa.txmax);
 

@@ -2,7 +2,7 @@ nbwmon
 ======
 Ncurses bandwidth monitor.
 
-features
+Features
 --------
 * Print bandwidth graphs.
 * Print current, average and maximum transfer speeds.
@@ -12,15 +12,16 @@ features
 * Support for multiple units.
 * Support for colors.
 
-usage
+Usage
 -----
-usage: ./nbwmon [options]
+usage: nbwmon [options]
 
 -h    help
 -v    version
 -n    no colors
 -s    use SI units
--u    unified graphmax
+-S    hide graph scale
+-u    unified graph max
 
 -i <interface>    network interface
 -d <seconds>      redraw delay
