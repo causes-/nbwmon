@@ -54,7 +54,8 @@ void eprintf(const char *fmt, ...) {
 
 long estrtol(const char *str) {
 	char *ep;
-	long l = strtol(str, &ep, 10);
+	long l;
+	l = strtol(str, &ep, 10);
 	if (!l || *ep != '\0' || ep == str)
 		eprintf("invalid number: %s\n", str);
 	return l;
@@ -62,24 +63,11 @@ long estrtol(const char *str) {
 
 double estrtod(const char *str) {
 	char *ep;
-	double d = strtod(str, &ep);
+	double d;
+	d = strtod(str, &ep);
 	if (!d || *ep != '\0' || ep == str)
 		eprintf("invalid number: %s\n", str);
 	return d;
-}
-
-void *emalloc(size_t size) {
-	void *p = malloc(size);
-	if (!p)
-		eprintf("out of memory\n");
-	return p;
-}
-
-void *ecalloc(size_t nmemb, size_t size) {
-	void *p = calloc(nmemb, size);
-	if (!p)
-		eprintf("out of memory\n");
-	return p;
 }
 
 size_t strlcpy(char *dest, const char *src, size_t size) {
@@ -93,6 +81,22 @@ size_t strlcpy(char *dest, const char *src, size_t size) {
 		dest[size] = '\0';
 	}
 	return size;
+}
+
+void *emalloc(size_t size) {
+	void *p;
+	p = malloc(size);
+	if (!p)
+		eprintf("out of memory\n");
+	return p;
+}
+
+void *ecalloc(size_t nmemb, size_t size) {
+	void *p;
+	p = calloc(nmemb, size);
+	if (!p)
+		eprintf("out of memory\n");
+	return p;
 }
 
 void detectiface(char *ifname) {
@@ -137,15 +141,18 @@ void scaledata(double raw, double *data, const char **unit, int siunits) {
 	*unit = siunits ? si[i] : iec[i];
 }
 
-void printgraphw(WINDOW *win, double *rxs, double max, int siunits, int lines, int cols, int color) {
+void printgraphw(WINDOW *win, double *rxs, double max, int siunits,
+		int lines, int cols, int hidescale, int color) {
 	int y, x;
 	double data;
 	const char *unit;
 	werase(win);
-	wborder(win, '-', ' ', ' ', ' ', ' ', ' ', ' ', ' ');
-	scaledata(max, &data, &unit, siunits);
-	mvwprintw(win, 0, 0, "%.2f %s/s", data, unit);
-	mvwprintw(win, lines-1, 0, "%.1f %s/s", 0.0, unit);
+	if (!hidescale) {
+		wborder(win, '-', ' ', ' ', ' ', ' ', ' ', ' ', ' ');
+		scaledata(max, &data, &unit, siunits);
+		mvwprintw(win, 0, 0, "%.2f %s/s", data, unit);
+		mvwprintw(win, lines-1, 0, "%.1f %s/s", 0.0, unit);
+	}
 	wattron(win, color);
 	for (y = 0; y < lines; y++)
 		for (x = 0; x < cols; x++)
@@ -311,25 +318,27 @@ int main(int argc, char *argv[]) {
 	int linesold, colsold;
 	int graphlines = 0;
 	int statslines = 4;
-	double delay = 1.0;
+	double delay = 0.5;
 	char key;
 	struct iface ifa;
 	WINDOW *title, *rxgraph, *txgraph, *stats;
-
-	int siunits = 0;
 	int colors = 1;
-	int fixedlines = 0;
+	int siunits = 0;
+	int hidescale = 0;
 	int syncgraphmax = 0;
+	int fixedlines = 0;
 
 	memset(&ifa, 0, sizeof ifa);
 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp("-v", argv[i]))
-			eprintf("%s %s\n", argv[0], VERSION);
+			eprintf("%s-%s\n", argv[0], VERSION);
 		else if (!strcmp("-n", argv[i]))
 			colors = 0;
 		else if (!strcmp("-s", argv[i]))
 			siunits = 1;
+		else if (!strcmp("-S", argv[i]))
+			hidescale = 1;
 		else if (!strcmp("-u", argv[i]))
 			syncgraphmax = 1;
 		else if (argv[i+1] == NULL || argv[i+1][0] == '-')
@@ -339,7 +348,8 @@ int main(int argc, char *argv[]) {
 					"-v    version\n"
 					"-n    no colors\n"
 					"-s    use SI units\n"
-					"-u    unified graphmax\n"
+					"-S    hide graph scale\n"
+					"-u    unified graph max\n"
 					"\n"
 					"-i <interface>    network interface\n"
 					"-d <seconds>      redraw delay\n"
@@ -350,8 +360,8 @@ int main(int argc, char *argv[]) {
 		else if (!strcmp("-i", argv[i]))
 			strlcpy(ifa.ifname, argv[++i], IFNAMSIZ);
 		else if (!strcmp("-l", argv[i])) {
-			fixedlines = 1;
 			graphlines = estrtol(argv[++i]);
+			fixedlines = 1;
 		}
 	}
 
@@ -381,7 +391,7 @@ int main(int argc, char *argv[]) {
 	title = newwin(1, COLS, 0, 0);
 	rxgraph = newwin(graphlines, COLS, 1, 0);
 	txgraph = newwin(graphlines, COLS, graphlines+1, 0);
-	stats = newwin(statslines, COLS, LINES-statslines, 0);
+	stats = newwin(LINES-(graphlines*2+1), COLS, graphlines*2+1, 0);
 	getdata(&ifa, siunits, delay, COLS);
 
 	while ((key = getch()) != 'q') {
@@ -401,23 +411,23 @@ int main(int argc, char *argv[]) {
 				scalerxs(&ifa.rxs, COLS, colsold);
 				scalerxs(&ifa.txs, COLS, colsold);
 			}
-			if (LINES != linesold && fixedlines == 0)
-				graphlines = (LINES-statslines-1)/2;
+			if (LINES != linesold && !fixedlines)
+				graphlines = (LINES-1-statslines)/2;
 
 			wresize(title, 1, COLS);
 			wresize(rxgraph, graphlines, COLS);
 			wresize(txgraph, graphlines, COLS);
-			wresize(stats, statslines, COLS);
+			wresize(stats, LINES-(graphlines*2+1), COLS);
 			mvwin(txgraph, graphlines+1, 0);
-			mvwin(stats, LINES-statslines, 0);
+			mvwin(stats, graphlines*2+1, 0);
 			resize = 0;
 		}
 
 		werase(title);
 		mvwprintw(title, 0, COLS/2-7, "interface: %s\n", ifa.ifname);
 		wnoutrefresh(title);
-		printgraphw(rxgraph, ifa.rxs, ifa.rxmax, siunits, graphlines, COLS, COLOR_PAIR(1));
-		printgraphw(txgraph, ifa.txs, ifa.txmax, siunits, graphlines, COLS, COLOR_PAIR(2));
+		printgraphw(rxgraph, ifa.rxs, ifa.rxmax, siunits, graphlines, COLS, hidescale, COLOR_PAIR(1));
+		printgraphw(txgraph, ifa.txs, ifa.txmax, siunits, graphlines, COLS, hidescale, COLOR_PAIR(2));
 		printstatsw(stats, ifa, siunits, COLS);
 		doupdate();
 	}
