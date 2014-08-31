@@ -243,43 +243,43 @@ void arrayresize(long **array, size_t newsize, size_t oldsize) {
 	free(arraytmp);
 }
 
-void bytestostr(long in, char *out, bool siunits) {
+char *bytestostr(double bytes, bool siunits) {
 	int i;
-	double scaled;
-	double prefix;
-	const char *unit;
-	char *fmt;
+	static char str[16];
 	static const char iec[][4] = { "B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" };
 	static const char si[][3] = { "B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
+	const char *unit;
+	char *fmt;
+	double prefix;
 
-	scaled = in;
 	prefix = siunits ? 1000.0 : 1024.0;
-	for (i = 0; scaled >= prefix && i < 9; i++)
-		scaled /= prefix;
+
+	for (i = 0; bytes >= prefix && i < 9; i++)
+		bytes /= prefix;
+
 	unit = siunits ? si[i] : iec[i];
 	fmt = i ? "%.2f %s" : "%.0f %s";
-	sprintf(out, fmt, scaled, unit);
+	sprintf(str, fmt, bytes, unit);
+
+	return str;
 }
 
 void printgraphw(WINDOW *win, long *array, double max, bool siunits,
 		int lines, int cols, bool hidescale, int color) {
 	int y, x;
-	char datastr[16];
 
 	werase(win);
 
 	if (!hidescale) {
 		wborder(win, '-', ' ', ' ', ' ', ' ', ' ', ' ', ' ');
-		bytestostr(max, datastr, siunits);
-		mvwprintw(win, 0, 0, "%s/s", datastr);
-		bytestostr(0.0, datastr, siunits);
-		mvwprintw(win, lines-1, 0, "%s/s", 0.0, datastr);
+		mvwprintw(win, 0, 0, "%s/s", bytestostr(max, siunits));
+		mvwprintw(win, lines-1, 0, "%s/s", 0.0, bytestostr(0.0, siunits));
 	}
 
 	wattron(win, color);
 	for (y = 0; y < lines; y++)
 		for (x = 0; x < cols; x++)
-			if (lines - 1 - array[x] / max * lines  < y)
+			if (lines - 1 - array[x] / max * lines < y)
 				mvwaddch(win, y, x, '*');
 	wattroff(win, color);
 
@@ -288,7 +288,6 @@ void printgraphw(WINDOW *win, long *array, double max, bool siunits,
 
 void printstatsw(WINDOW *win, struct iface ifa, bool siunits, int cols) {
 	int colrx, coltx;
-	char datastr[16];
 	char *fmt;
 	int line = 0;
 
@@ -297,35 +296,42 @@ void printstatsw(WINDOW *win, struct iface ifa, bool siunits, int cols) {
 	fmt = "%6s %s/s";
 	colrx = cols / 4 - 8;
 	coltx = colrx + cols / 2 + 1;
-	bytestostr(ifa.rxs[cols-1], datastr, siunits);
-	mvwprintw(win, line, colrx, fmt, "RX:", datastr);
-	bytestostr(ifa.txs[cols-1], datastr, siunits);
-	mvwprintw(win, line++, coltx, fmt, "TX:", datastr);
+	mvwprintw(win, line, colrx, fmt, "RX:", bytestostr(ifa.rxs[cols-1], siunits));
+	mvwprintw(win, line++, coltx, fmt, "TX:", bytestostr(ifa.txs[cols-1], siunits));
 
-	bytestostr(ifa.rxavg, datastr, siunits);
-	mvwprintw(win, line, colrx, fmt, "avg:", datastr);
-	bytestostr(ifa.txavg, datastr, siunits);
-	mvwprintw(win, line++, coltx, fmt, "avg:", datastr);
+	mvwprintw(win, line, colrx, fmt, "avg:", bytestostr(ifa.rxavg, siunits));
+	mvwprintw(win, line++, coltx, fmt, "avg:", bytestostr(ifa.txavg, siunits));
 
-	bytestostr(ifa.rxmax, datastr, siunits);
-	mvwprintw(win, line, colrx, fmt, "max:", datastr);
-	bytestostr(ifa.txmax, datastr, siunits);
-	mvwprintw(win, line++, coltx, fmt, "max:", datastr);
+	mvwprintw(win, line, colrx, fmt, "max:", bytestostr(ifa.rxmax, siunits));
+	mvwprintw(win, line++, coltx, fmt, "max:", bytestostr(ifa.txmax, siunits));
 
 	fmt = "%6s %s";
-	bytestostr(ifa.rx, datastr, siunits);
-	mvwprintw(win, line, colrx, fmt, "total:", datastr);
-	bytestostr(ifa.tx, datastr, siunits);
-	mvwprintw(win, line++, coltx, fmt, "total:", datastr);
+	mvwprintw(win, line, colrx, fmt, "total:", bytestostr(ifa.rx, siunits));
+	mvwprintw(win, line++, coltx, fmt, "total:", bytestostr(ifa.tx, siunits));
 
 	wnoutrefresh(win);
 }
 
-int main(int argc, char *argv[]) {
+void usage(char **argv) {
+	eprintf("usage: %s [options]\n"
+			"\n"
+			"-h    help\n"
+			"-v    version\n"
+			"-C    no colors\n"
+			"-s    SI units\n"
+			"-S    hide graph scale\n"
+			"-m    sync RX and TX max\n"
+			"\n"
+			"-d <seconds>      redraw delay\n"
+			"-i <interface>    network interface\n"
+			"-l <lines>        fixed graph height\n"
+			, argv[0]);
+}
+
+int main(int argc, char **argv) {
 	int i;
 	int linesold, colsold;
 	int graphlines = 0;
-	int statslines = 4;
 	double delay = 0.5;
 	char key;
 	struct iface ifa;
@@ -342,28 +348,16 @@ int main(int argc, char *argv[]) {
 	for (i = 1; i < argc; i++) {
 		if (!strcmp("-v", argv[i]))
 			eprintf("%s-%s\n", argv[0], VERSION);
-		else if (!strcmp("-n", argv[i]))
+		else if (!strcmp("-C", argv[i]))
 			colors = false;
 		else if (!strcmp("-s", argv[i]))
 			siunits = true;
 		else if (!strcmp("-S", argv[i]))
 			hidescale = true;
-		else if (!strcmp("-u", argv[i]))
+		else if (!strcmp("-m", argv[i]))
 			syncgraphmax = true;
 		else if (argv[i+1] == NULL || argv[i+1][0] == '-')
-			eprintf("usage: %s [options]\n"
-					"\n"
-					"-h    help\n"
-					"-v    version\n"
-					"-n    no colors\n"
-					"-s    use SI units\n"
-					"-S    hide graph scale\n"
-					"-u    unified graph max\n"
-					"\n"
-					"-i <interface>    network interface\n"
-					"-d <seconds>      redraw delay\n"
-					"-l <lines>        fixed graph height\n"
-					, argv[0]);
+			usage(argv);
 		else if (!strcmp("-d", argv[i]))
 			delay = estrtod(argv[++i]);
 		else if (!strcmp("-i", argv[i]))
@@ -394,11 +388,12 @@ int main(int argc, char *argv[]) {
 	mvprintw(0, 0, "collecting data from %s for %.2f seconds\n", ifa.ifname, delay);
 
 	if (!fixedlines)
-		graphlines = (LINES-1-statslines)/2;
+		graphlines = (LINES-5)/2;
 	title = newwin(1, COLS, 0, 0);
 	rxgraph = newwin(graphlines, COLS, 1, 0);
 	txgraph = newwin(graphlines, COLS, graphlines+1, 0);
 	stats = newwin(LINES-(graphlines*2+1), COLS, graphlines*2+1, 0);
+
 	getdata(&ifa, delay, COLS);
 
 	while ((key = getch()) != 'q') {
@@ -420,7 +415,7 @@ int main(int argc, char *argv[]) {
 				arrayresize(&ifa.txs, COLS, colsold);
 			}
 			if (LINES != linesold && !fixedlines)
-				graphlines = (LINES-1-statslines)/2;
+				graphlines = (LINES-5)/2;
 
 			wresize(title, 1, COLS);
 			wresize(rxgraph, graphlines, COLS);
