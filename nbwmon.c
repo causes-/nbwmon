@@ -100,6 +100,24 @@ void *ecalloc(size_t nmemb, size_t size) {
 	return p;
 }
 
+long arrayavg(long *array, size_t n) {
+	int i;
+	long sum = 0;
+	for (i = 0; i < n; i++)
+		sum += array[i];
+	sum /= (n-1);
+	return sum;
+}
+
+long arraymax(long *array, size_t n) {
+	int i;
+	long max = 0;
+	for (i = 0; i < n; i++)
+		if (array[i] > max)
+			max = array[i];
+	return max;
+}
+
 void detectiface(char *ifname) {
 	struct ifaddrs *ifas, *ifa;
 	if (getifaddrs(&ifas) == -1)
@@ -114,24 +132,6 @@ void detectiface(char *ifname) {
 			}
 	}
 	freeifaddrs(ifas);
-}
-
-long avgrxs(long *rxs, int cols) {
-	int i;
-	long sum = 0;
-	for (i = 0; i < cols; i++)
-		sum += rxs[i];
-	sum /= (cols-1);
-	return sum;
-}
-
-long maxrxs(long *rxs, int cols) {
-	int i;
-	long max = 0;
-	for (i = 0; i < cols; i++)
-		if (rxs[i] > max)
-			max = rxs[i];
-	return max;
 }
 
 #ifdef __linux__
@@ -217,27 +217,27 @@ void getdata(struct iface *ifa, double delay, int cols) {
 		ifa->rxs[cols-1] = (ifa->rx - rx) / delay;
 		ifa->txs[cols-1] = (ifa->tx - tx) / delay;
 
-		ifa->rxavg = avgrxs(ifa->rxs, cols);
-		ifa->txavg = avgrxs(ifa->txs, cols);
+		ifa->rxavg = arrayavg(ifa->rxs, cols);
+		ifa->txavg = arrayavg(ifa->txs, cols);
 
-		ifa->rxmax = maxrxs(ifa->rxs, cols);
-		ifa->txmax = maxrxs(ifa->txs, cols);
+		ifa->rxmax = arraymax(ifa->rxs, cols);
+		ifa->txmax = arraymax(ifa->txs, cols);
 	}
 
 	getcounters(ifa->ifname, &rx, &tx);
 }
 
-void scalecols(long **rxs, int cols, int colsold) {
-	long *rxstmp;
-	if (cols == colsold)
+void arrayresize(long **array, size_t newsize, size_t oldsize) {
+	long *arraytmp;
+	if (newsize == oldsize)
 		return;
-	rxstmp = *rxs;
-	*rxs = ecalloc(cols, sizeof(long));
-	if (cols > colsold)
-		memcpy(*rxs+(cols-colsold), rxstmp, sizeof(long) * colsold);
+	arraytmp = *array;
+	*array = ecalloc(newsize, sizeof(long));
+	if (newsize > oldsize)
+		memcpy(*array+(newsize-oldsize), arraytmp, sizeof(long) * oldsize);
 	else
-		memcpy(*rxs, rxstmp+(colsold-cols), sizeof(long) * cols);
-	free(rxstmp);
+		memcpy(*array, arraytmp+(oldsize-newsize), sizeof(long) * newsize);
+	free(arraytmp);
 }
 
 void bytestostr(long in, char *out, bool siunits) {
@@ -258,7 +258,7 @@ void bytestostr(long in, char *out, bool siunits) {
 	sprintf(out, fmt, scaled, unit);
 }
 
-void printgraphw(WINDOW *win, long *rxs, double max, bool siunits,
+void printgraphw(WINDOW *win, long *array, double max, bool siunits,
 		int lines, int cols, bool hidescale, int color) {
 	int y, x;
 	char datastr[16];
@@ -276,7 +276,7 @@ void printgraphw(WINDOW *win, long *rxs, double max, bool siunits,
 	wattron(win, color);
 	for (y = 0; y < lines; y++)
 		for (x = 0; x < cols; x++)
-			if (lines - 1 - rxs[x] / max * lines  < y)
+			if (lines - 1 - array[x] / max * lines  < y)
 				mvwaddch(win, y, x, '*');
 	wattroff(win, color);
 
@@ -415,8 +415,8 @@ int main(int argc, char *argv[]) {
 			refresh();
 
 			if (COLS != colsold) {
-				scalecols(&ifa.rxs, COLS, colsold);
-				scalecols(&ifa.txs, COLS, colsold);
+				arrayresize(&ifa.rxs, COLS, colsold);
+				arrayresize(&ifa.txs, COLS, colsold);
 			}
 			if (LINES != linesold && !fixedlines)
 				graphlines = (LINES-1-statslines)/2;
