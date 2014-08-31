@@ -120,18 +120,21 @@ long arraymax(long *array, size_t n) {
 
 void detectiface(char *ifname) {
 	struct ifaddrs *ifas, *ifa;
+
 	if (getifaddrs(&ifas) == -1)
-		return;
+		eprintf("can't detect network interface\n");
+
 	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
 		if (ifa->ifa_flags & IFF_LOOPBACK)
 			continue;
 		if (ifa->ifa_flags & IFF_RUNNING)
 			if (ifa->ifa_flags & IFF_UP) {
 				strlcpy(ifname, ifa->ifa_name, IFNAMSIZ);
-				break;
+				freeifaddrs(ifas);
+				return;
 			}
 	}
-	freeifaddrs(ifas);
+	eprintf("can't detect network interface\n");
 }
 
 #ifdef __linux__
@@ -372,8 +375,6 @@ int main(int argc, char *argv[]) {
 	}
 	if (ifa.ifname[0] == '\0')
 		detectiface(ifa.ifname);
-	if (ifa.ifname[0] == '\0')
-		eprintf("can't detect network interface\n");
 
 	initscr();
 	curs_set(0);
