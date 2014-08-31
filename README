@@ -18,11 +18,11 @@ usage: nbwmon [options]
 
 -h    help
 -v    version
--n    no colors
--s    use SI units
+-C    no colors
+-s    SI units
 -S    hide graph scale
--u    unified graph max
+-m    sync RX and TX max
 
--i <interface>    network interface
 -d <seconds>      redraw delay
+-i <interface>    network interface
 -l <lines>        fixed graph height
