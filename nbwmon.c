@@ -46,6 +46,7 @@ void sighandler(int sig) {
 
 void eprintf(const char *fmt, ...) {
 	va_list ap;
+
 	endwin();
 	va_start(ap, fmt);
 	vfprintf(stderr, fmt, ap);
@@ -56,6 +57,7 @@ void eprintf(const char *fmt, ...) {
 long estrtol(const char *str) {
 	char *ep;
 	long l;
+
 	l = strtol(str, &ep, 10);
 	if (!l || *ep != '\0' || ep == str)
 		eprintf("invalid number: %s\n", str);
@@ -65,6 +67,7 @@ long estrtol(const char *str) {
 double estrtod(const char *str) {
 	char *ep;
 	double d;
+
 	d = strtod(str, &ep);
 	if (!d || *ep != '\0' || ep == str)
 		eprintf("invalid number: %s\n", str);
@@ -73,6 +76,7 @@ double estrtod(const char *str) {
 
 size_t strlcpy(char *dest, const char *src, size_t size) {
 	size_t len = strlen(src);
+
 	if (size) {
 		if (len >= size)
 			size -= 1;
@@ -86,6 +90,7 @@ size_t strlcpy(char *dest, const char *src, size_t size) {
 
 void *emalloc(size_t size) {
 	void *p;
+
 	p = malloc(size);
 	if (!p)
 		eprintf("out of memory\n");
@@ -94,6 +99,7 @@ void *emalloc(size_t size) {
 
 void *ecalloc(size_t nmemb, size_t size) {
 	void *p;
+
 	p = calloc(nmemb, size);
 	if (!p)
 		eprintf("out of memory\n");
@@ -103,6 +109,7 @@ void *ecalloc(size_t nmemb, size_t size) {
 long arrayavg(long *array, size_t n) {
 	int i;
 	long sum = 0;
+
 	for (i = 0; i < n; i++)
 		sum += array[i];
 	sum /= (n-1);
@@ -112,17 +119,18 @@ long arrayavg(long *array, size_t n) {
 long arraymax(long *array, size_t n) {
 	int i;
 	long max = 0;
+
 	for (i = 0; i < n; i++)
 		if (array[i] > max)
 			max = array[i];
 	return max;
 }
 
-void detectiface(char *ifname) {
+bool detectiface(char *ifname) {
 	struct ifaddrs *ifas, *ifa;
 
 	if (getifaddrs(&ifas) == -1)
-		eprintf("can't detect network interface\n");
+		return false;
 
 	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
 		if (ifa->ifa_flags & IFF_LOOPBACK)
@@ -131,14 +139,14 @@ void detectiface(char *ifname) {
 			if (ifa->ifa_flags & IFF_UP) {
 				strlcpy(ifname, ifa->ifa_name, IFNAMSIZ);
 				freeifaddrs(ifas);
-				return;
+				return true;
 			}
 	}
-	eprintf("can't detect network interface\n");
+	return false;
 }
 
 #ifdef __linux__
-void getcounters(char *ifname, long long *rx, long long *tx) {
+bool getcounters(char *ifname, long long *rx, long long *tx) {
 	struct ifaddrs *ifas, *ifa;
 	struct rtnl_link_stats *stats;
 
@@ -146,7 +154,8 @@ void getcounters(char *ifname, long long *rx, long long *tx) {
 	*tx = -1;
 
 	if (getifaddrs(&ifas) == -1)
-		return;
+		return false;
+
 	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
 		if (!strcmp(ifa->ifa_name, ifname)) {
 			if (ifa->ifa_addr->sa_family == AF_PACKET && ifa->ifa_data != NULL) {
@@ -159,11 +168,12 @@ void getcounters(char *ifname, long long *rx, long long *tx) {
 	freeifaddrs(ifas);
 
 	if (*rx == -1 || *tx == -1)
-		eprintf("can't read rx and tx bytes for %s\n", ifname);
+		return false;
+	return true;
 }
 
 #elif __OpenBSD__
-void getcounters(char *ifname, long long *rx, long long *tx) {
+bool getcounters(char *ifname, long long *rx, long long *tx) {
 	int mib[6];
 	char *buf = NULL, *next;
 	size_t sz;
@@ -180,10 +190,11 @@ void getcounters(char *ifname, long long *rx, long long *tx) {
 	mib[4] = NET_RT_IFLIST;	/* no flags */
 	mib[5] = 0;
 
-	sysctl(mib, 6, NULL, &sz, NULL, 0);
+	if (sysctl(mib, 6, NULL, &sz, NULL, 0) < 0)
+		return false;
 	buf = emalloc(sz);
 	if (sysctl(mib, 6, buf, &sz, NULL, 0) < 0)
-		eprintf("can't read rx and tx bytes for %s\n", ifname);
+		return false;
 
 	for (next = buf; next < buf + sz; next += ifm->ifm_msglen) {
 		ifm = (struct if_msghdr *)next;
@@ -204,15 +215,17 @@ void getcounters(char *ifname, long long *rx, long long *tx) {
 	free(buf);
 
 	if (*rx == -1 || *tx == -1)
-		eprintf("can't read rx and tx bytes for %s\n", ifname);
+		return false;
+	return true;
 }
 #endif
 
-void getdata(struct iface *ifa, double delay, int cols) {
+bool getdata(struct iface *ifa, double delay, int cols) {
 	static long long rx, tx;
 
 	if (rx && tx && !resize) {
-		getcounters(ifa->ifname, &ifa->rx, &ifa->tx);
+		if (!getcounters(ifa->ifname, &ifa->rx, &ifa->tx))
+			return false;
 
 		memmove(ifa->rxs, ifa->rxs+1, sizeof(long) * (cols-1));
 		memmove(ifa->txs, ifa->txs+1, sizeof(long) * (cols-1));
@@ -227,13 +240,17 @@ void getdata(struct iface *ifa, double delay, int cols) {
 		ifa->txmax = arraymax(ifa->txs, cols);
 	}
 
-	getcounters(ifa->ifname, &rx, &tx);
+	if (!getcounters(ifa->ifname, &ifa->rx, &ifa->tx))
+		return false;
+	return true;
 }
 
-void arrayresize(long **array, size_t newsize, size_t oldsize) {
+bool arrayresize(long **array, size_t newsize, size_t oldsize) {
 	long *arraytmp;
+
 	if (newsize == oldsize)
-		return;
+		return false;
+
 	arraytmp = *array;
 	*array = ecalloc(newsize, sizeof(long));
 	if (newsize > oldsize)
@@ -241,11 +258,13 @@ void arrayresize(long **array, size_t newsize, size_t oldsize) {
 	else
 		memcpy(*array, arraytmp+(oldsize-newsize), sizeof(long) * newsize);
 	free(arraytmp);
+
+	return true;
 }
 
 char *bytestostr(double bytes, bool siunits) {
 	int i;
-	static char str[16];
+	static char str[32];
 	static const char iec[][4] = { "B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" };
 	static const char si[][3] = { "B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
 	const char *unit;
@@ -367,8 +386,10 @@ int main(int argc, char **argv) {
 			fixedlines = true;
 		}
 	}
+
 	if (ifa.ifname[0] == '\0')
-		detectiface(ifa.ifname);
+		if (!detectiface(ifa.ifname))
+			eprintf("can't detect network interface\n");
 
 	initscr();
 	curs_set(0);
@@ -389,18 +410,22 @@ int main(int argc, char **argv) {
 
 	if (!fixedlines)
 		graphlines = (LINES-5)/2;
+
 	title = newwin(1, COLS, 0, 0);
 	rxgraph = newwin(graphlines, COLS, 1, 0);
 	txgraph = newwin(graphlines, COLS, graphlines+1, 0);
 	stats = newwin(LINES-(graphlines*2+1), COLS, graphlines*2+1, 0);
 
-	getdata(&ifa, delay, COLS);
+	if (!getdata(&ifa, delay, COLS))
+		eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
 
 	while ((key = getch()) != 'q') {
 		if (key != ERR)
 			resize = 1;
 
-		getdata(&ifa, delay, COLS);
+		if (!getdata(&ifa, delay, COLS))
+			eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
+
 		if (syncgraphmax)
 			ifa.rxmax = ifa.txmax = MAX(ifa.rxmax, ifa.txmax);
 
@@ -410,10 +435,9 @@ int main(int argc, char **argv) {
 			endwin();
 			refresh();
 
-			if (COLS != colsold) {
-				arrayresize(&ifa.rxs, COLS, colsold);
-				arrayresize(&ifa.txs, COLS, colsold);
-			}
+			arrayresize(&ifa.rxs, COLS, colsold);
+			arrayresize(&ifa.txs, COLS, colsold);
+
 			if (LINES != linesold && !fixedlines)
 				graphlines = (LINES-5)/2;
 
