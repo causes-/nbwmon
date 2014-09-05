@@ -136,13 +136,15 @@ bool detectiface(char *ifname) {
 		if (ifa->ifa_flags & IFF_LOOPBACK)
 			continue;
 		if (ifa->ifa_flags & IFF_RUNNING)
-			if (ifa->ifa_flags & IFF_UP) {
+			if (ifa->ifa_flags & IFF_UP)
 				strlcpy(ifname, ifa->ifa_name, IFNAMSIZ);
-				freeifaddrs(ifas);
-				return true;
-			}
 	}
-	return false;
+
+	freeifaddrs(ifas);
+
+	if (ifname[0] == '\0')
+		return false;
+	return true;
 }
 
 #ifdef __linux__
@@ -165,6 +167,7 @@ bool getcounters(char *ifname, long long *rx, long long *tx) {
 			}
 		}
 	}
+
 	freeifaddrs(ifas);
 
 	if (*rx == -1 || *tx == -1)
@@ -212,6 +215,7 @@ bool getcounters(char *ifname, long long *rx, long long *tx) {
 			}
 		}
 	}
+
 	free(buf);
 
 	if (*rx == -1 || *tx == -1)
