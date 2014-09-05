@@ -1,3 +1,7 @@
+ifndef PKG_CONFIG
+PKG_CONFIG=pkg-config
+endif
+
 CFLAGS+=-std=c99 -pedantic -Wall
 LDLIBS=$(shell $(PKG_CONFIG) --libs ncurses)
 
