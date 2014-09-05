@@ -27,14 +27,14 @@
 
 struct iface {
 	char ifname[IFNAMSIZ];
-	long long rx;
-	long long tx;
-	long *rxs;
-	long *txs;
-	long rxavg;
-	long txavg;
-	long rxmax;
-	long txmax;
+	unsigned long long rx;
+	unsigned long long tx;
+	unsigned long *rxs;
+	unsigned long *txs;
+	unsigned long rxavg;
+	unsigned long txavg;
+	unsigned long rxmax;
+	unsigned long txmax;
 };
 
 static sig_atomic_t resize;
@@ -75,7 +75,9 @@ double estrtod(const char *str) {
 }
 
 size_t strlcpy(char *dest, const char *src, size_t size) {
-	size_t len = strlen(src);
+	size_t len;
+
+	len = strlen(src);
 
 	if (size) {
 		if (len >= size)
@@ -85,6 +87,7 @@ size_t strlcpy(char *dest, const char *src, size_t size) {
 		memcpy(dest, src, size);
 		dest[size] = '\0';
 	}
+
 	return size;
 }
 
@@ -106,7 +109,7 @@ void *ecalloc(size_t nmemb, size_t size) {
 	return p;
 }
 
-long arrayavg(long *array, size_t n) {
+unsigned long arrayavg(unsigned long *array, size_t n) {
 	int i;
 	long sum = 0;
 
@@ -116,7 +119,7 @@ long arrayavg(long *array, size_t n) {
 	return sum;
 }
 
-long arraymax(long *array, size_t n) {
+unsigned long arraymax(unsigned long *array, size_t n) {
 	int i;
 	long max = 0;
 
@@ -148,12 +151,12 @@ bool detectiface(char *ifname) {
 }
 
 #ifdef __linux__
-bool getcounters(char *ifname, long long *rx, long long *tx) {
+bool getcounters(char *ifname, unsigned long long *rx, unsigned long long *tx) {
 	struct ifaddrs *ifas, *ifa;
 	struct rtnl_link_stats *stats;
 
-	*rx = -1;
-	*tx = -1;
+	*rx = 0;
+	*tx = 0;
 
 	if (getifaddrs(&ifas) == -1)
 		return false;
@@ -170,21 +173,21 @@ bool getcounters(char *ifname, long long *rx, long long *tx) {
 
 	freeifaddrs(ifas);
 
-	if (*rx == -1 || *tx == -1)
+	if (!*rx || !*tx)
 		return false;
 	return true;
 }
 
 #elif __OpenBSD__
-bool getcounters(char *ifname, long long *rx, long long *tx) {
+bool getcounters(char *ifname, unsigned long long *rx, unsigned long long *tx) {
 	int mib[6];
 	char *buf = NULL, *next;
 	size_t sz;
 	struct if_msghdr *ifm;
 	struct sockaddr_dl *sdl;
 
-	*rx = -1;
-	*tx = -1;
+	*rx = 0;
+	*tx = 0;
 
 	mib[0] = CTL_NET;
 	mib[1] = PF_ROUTE;
@@ -218,14 +221,14 @@ bool getcounters(char *ifname, long long *rx, long long *tx) {
 
 	free(buf);
 
-	if (*rx == -1 || *tx == -1)
+	if (!*rx || !*tx)
 		return false;
 	return true;
 }
 #endif
 
 bool getdata(struct iface *ifa, double delay, int cols) {
-	static long long rx, tx;
+	static unsigned long long rx, tx;
 
 	if (rx && tx && !resize) {
 		if (!getcounters(ifa->ifname, &ifa->rx, &ifa->tx))
@@ -244,13 +247,13 @@ bool getdata(struct iface *ifa, double delay, int cols) {
 		ifa->txmax = arraymax(ifa->txs, cols);
 	}
 
-	if (!getcounters(ifa->ifname, &ifa->rx, &ifa->tx))
+	if (!getcounters(ifa->ifname, &rx, &tx))
 		return false;
 	return true;
 }
 
-bool arrayresize(long **array, size_t newsize, size_t oldsize) {
-	long *arraytmp;
+bool arrayresize(unsigned long **array, size_t newsize, size_t oldsize) {
+	unsigned long *arraytmp;
 
 	if (newsize == oldsize)
 		return false;
@@ -287,7 +290,7 @@ char *bytestostr(double bytes, bool siunits) {
 	return str;
 }
 
-void printgraphw(WINDOW *win, long *array, double max, bool siunits,
+void printgraphw(WINDOW *win, unsigned long *array, double max, bool siunits,
 		int lines, int cols, bool hidescale, int color) {
 	int y, x;
 
