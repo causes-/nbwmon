@@ -1,4 +1,5 @@
-CFLAGS+=-std=c99 -pedantic -Wall -lncurses
+CFLAGS+=-std=c99 -pedantic -Wall
+LDLIBS= $(shell $(PKG_CONFIG) --libs ncurses)
 
 BIN=nbwmon
 
