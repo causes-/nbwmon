@@ -299,7 +299,7 @@ void printgraphw(WINDOW *win, unsigned long *array, double max, bool siunits,
 	if (!hidescale) {
 		wborder(win, '-', ' ', ' ', ' ', ' ', ' ', ' ', ' ');
 		mvwprintw(win, 0, 0, "%s/s", bytestostr(max, siunits));
-		mvwprintw(win, lines-1, 0, "%s/s", 0.0, bytestostr(0.0, siunits));
+		mvwprintw(win, lines-1, 0, "%s/s", bytestostr(0.0, siunits));
 	}
 
 	wattron(win, color);
