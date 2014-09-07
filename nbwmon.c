@@ -115,7 +115,7 @@ unsigned long arrayavg(unsigned long *array, size_t n) {
 
 	for (i = 0; i < n; i++)
 		sum += array[i];
-	sum /= (n-1);
+	sum /= n;
 	return sum;
 }
 
