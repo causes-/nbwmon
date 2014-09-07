@@ -254,15 +254,16 @@ bool getdata(struct iface *ifa, double delay, int cols) {
 bool arrayresize(unsigned long **array, size_t newsize, size_t oldsize) {
 	unsigned long *arraytmp;
 
+	if (newsize == oldsize)
+		return false;
+
 	arraytmp = *array;
 	*array = ecalloc(newsize, sizeof(long));
 
 	if (newsize > oldsize)
 		memcpy(*array+(newsize-oldsize), arraytmp, sizeof(long) * oldsize);
-	else if (oldsize > newsize)
-		memcpy(*array, arraytmp+(oldsize-newsize), sizeof(long) * newsize);
 	else
-		return false;
+		memcpy(*array, arraytmp+(oldsize-newsize), sizeof(long) * newsize);
 
 	free(arraytmp);
 
