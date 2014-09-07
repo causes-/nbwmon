@@ -155,8 +155,7 @@ bool getcounters(char *ifname, unsigned long long *rx, unsigned long long *tx) {
 	struct ifaddrs *ifas, *ifa;
 	struct rtnl_link_stats *stats;
 
-	*rx = 0;
-	*tx = 0;
+	stats = NULL;
 
 	if (getifaddrs(&ifas) == -1)
 		return false;
@@ -173,7 +172,7 @@ bool getcounters(char *ifname, unsigned long long *rx, unsigned long long *tx) {
 
 	freeifaddrs(ifas);
 
-	if (!*rx || !*tx)
+	if (!stats)
 		return false;
 	return true;
 }
@@ -181,13 +180,13 @@ bool getcounters(char *ifname, unsigned long long *rx, unsigned long long *tx) {
 #elif __OpenBSD__
 bool getcounters(char *ifname, unsigned long long *rx, unsigned long long *tx) {
 	int mib[6];
-	char *buf = NULL, *next;
+	char *buf, *next;
 	size_t sz;
 	struct if_msghdr *ifm;
 	struct sockaddr_dl *sdl;
 
-	*rx = 0;
-	*tx = 0;
+	buf = NULL;
+	sdl = NULL;
 
 	mib[0] = CTL_NET;
 	mib[1] = PF_ROUTE;
@@ -221,7 +220,7 @@ bool getcounters(char *ifname, unsigned long long *rx, unsigned long long *tx) {
 
 	free(buf);
 
-	if (!*rx || !*tx)
+	if (!sdl)
 		return false;
 	return true;
 }
