@@ -291,7 +291,7 @@ char *bytestostr(double bytes, bool siunits) {
 	return str;
 }
 
-void printgraphw(WINDOW *win, unsigned long *array, double max, bool siunits,
+void printgraphw(WINDOW *win, char *name, unsigned long *array, double max, bool siunits,
 		int lines, int cols, bool hidescale, int color) {
 	int y, x;
 	int barheight;
@@ -302,8 +302,10 @@ void printgraphw(WINDOW *win, unsigned long *array, double max, bool siunits,
 		mvwvline(win, 0, 0, '-', lines);
 		mvwhline(win, 0, 0, ACS_HLINE, cols);
 		mvwhline(win, lines-1, 0, ACS_HLINE, cols);
-		mvwprintw(win, 0, 0, "%s/s", bytestostr(max, siunits));
-		mvwprintw(win, lines-1, 0, "%s/s", bytestostr(0.0, siunits));
+		if (name)
+			mvwprintw(win, 0, cols-strlen(name), name);
+		mvwprintw(win, 0, 0, "[ %s/s ]", bytestostr(max, siunits));
+		mvwprintw(win, lines-1, 0, "[ %s/s ]", bytestostr(0.0, siunits));
 		lines -= 2;
 		cols--;
 	}
@@ -487,8 +489,10 @@ int main(int argc, char **argv) {
 		werase(title);
 		mvwprintw(title, 0, COLS/2-7, "interface: %s\n", ifa.ifname);
 		wnoutrefresh(title);
-		printgraphw(rxgraph, ifa.rxs, ifa.rxmax, siunits, graphlines, COLS, hidescale, COLOR_PAIR(1));
-		printgraphw(txgraph, ifa.txs, ifa.txmax, siunits, graphlines, COLS, hidescale, COLOR_PAIR(2));
+		printgraphw(rxgraph, "[ RX ]", ifa.rxs, ifa.rxmax, siunits,
+				graphlines, COLS, hidescale, COLOR_PAIR(1));
+		printgraphw(txgraph, "[ TX ]", ifa.txs, ifa.txmax, siunits,
+				graphlines, COLS, hidescale, COLOR_PAIR(2));
 		printstatsw(stats, ifa, siunits, COLS);
 		doupdate();
 	}
