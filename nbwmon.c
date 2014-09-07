@@ -298,15 +298,23 @@ void printgraphw(WINDOW *win, unsigned long *array, double max, bool siunits,
 
 	if (!hidescale) {
 		mvwvline(win, 0, 0, '-', lines);
+		mvwhline(win, 0, 0, ACS_HLINE, cols);
+		mvwhline(win, lines-1, 0, ACS_HLINE, cols);
 		mvwprintw(win, 0, 0, "%s/s", bytestostr(max, siunits));
 		mvwprintw(win, lines-1, 0, "%s/s", bytestostr(0.0, siunits));
+		lines -= 2;
+		cols--;
 	}
 
 	wattron(win, color);
 	for (y = 0; y < lines; y++)
 		for (x = 0; x < cols; x++)
-			if (lines - 1 - array[x] / max * lines < y)
-				mvwaddch(win, y, x, '*');
+			if (lines - 1 - array[x] / max * lines < y) {
+				if (!hidescale)
+					mvwaddch(win, y+1, x+1, '*');
+				else
+					mvwaddch(win, y, x, '*');
+			}
 	wattroff(win, color);
 
 	wnoutrefresh(win);
