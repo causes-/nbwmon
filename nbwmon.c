@@ -84,7 +84,7 @@ size_t strlcpy(char *dest, const char *src, size_t size) {
 			size -= 1;
 		else
 			size = len;
-		memcpy(dest, src, size);
+		strncpy(dest, src, size);
 		dest[size] = '\0';
 	}
 
@@ -110,8 +110,8 @@ void *ecalloc(size_t nmemb, size_t size) {
 }
 
 unsigned long arrayavg(unsigned long *array, size_t n) {
-	int i;
-	long sum = 0;
+	size_t i;
+	unsigned long sum = 0;
 
 	for (i = 0; i < n; i++)
 		sum += array[i];
@@ -120,8 +120,8 @@ unsigned long arrayavg(unsigned long *array, size_t n) {
 }
 
 unsigned long arraymax(unsigned long *array, size_t n) {
-	int i;
-	long max = 0;
+	size_t i;
+	unsigned long max = 0;
 
 	for (i = 0; i < n; i++)
 		if (array[i] > max)
@@ -284,7 +284,7 @@ char *bytestostr(double bytes, bool siunits) {
 
 	unit = siunits ? si[i] : iec[i];
 	fmt = i ? "%.2f %s" : "%.0f %s";
-	sprintf(str, fmt, bytes, unit);
+	sprintf(str, sizeof str, fmt, bytes, unit);
 
 	return str;
 }
@@ -470,5 +470,7 @@ int main(int argc, char **argv) {
 	delwin(txgraph);
 	delwin(stats);
 	endwin();
+	free(ifa.rxs);
+	free(ifa.txs);
 	return EXIT_SUCCESS;
 }
