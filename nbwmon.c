@@ -145,13 +145,13 @@ bool detectiface(char *ifname) {
 
 	freeifaddrs(ifas);
 
-	if (ifname[0] == '\0')
+	if (*ifname == '\0')
 		return false;
 	return true;
 }
 
 #ifdef __linux__
-bool getcounters(char *ifname, unsigned long long *rx, unsigned long long *tx) {
+static bool getcounters(char *ifname, unsigned long long *rx, unsigned long long *tx) {
 	struct ifaddrs *ifas, *ifa;
 	struct rtnl_link_stats *stats;
 
@@ -178,7 +178,7 @@ bool getcounters(char *ifname, unsigned long long *rx, unsigned long long *tx) {
 }
 
 #elif __OpenBSD__
-bool getcounters(char *ifname, unsigned long long *rx, unsigned long long *tx) {
+static bool getcounters(char *ifname, unsigned long long *rx, unsigned long long *tx) {
 	int mib[6];
 	char *buf, *next;
 	size_t sz;
@@ -254,15 +254,16 @@ bool getdata(struct iface *ifa, double delay, int cols) {
 bool arrayresize(unsigned long **array, size_t newsize, size_t oldsize) {
 	unsigned long *arraytmp;
 
-	if (newsize == oldsize)
-		return false;
-
 	arraytmp = *array;
 	*array = ecalloc(newsize, sizeof(long));
+
 	if (newsize > oldsize)
 		memcpy(*array+(newsize-oldsize), arraytmp, sizeof(long) * oldsize);
-	else
+	else if (oldsize > newsize)
 		memcpy(*array, arraytmp+(oldsize-newsize), sizeof(long) * newsize);
+	else
+		return false;
+
 	free(arraytmp);
 
 	return true;
@@ -284,7 +285,7 @@ char *bytestostr(double bytes, bool siunits) {
 
 	unit = siunits ? si[i] : iec[i];
 	fmt = i ? "%.2f %s" : "%.0f %s";
-	sprintf(str, sizeof str, fmt, bytes, unit);
+	snprintf(str, sizeof(str), fmt, bytes, unit);
 
 	return str;
 }
@@ -296,7 +297,7 @@ void printgraphw(WINDOW *win, unsigned long *array, double max, bool siunits,
 	werase(win);
 
 	if (!hidescale) {
-		wborder(win, '-', ' ', ' ', ' ', ' ', ' ', ' ', ' ');
+		mvwvline(win, 0, 0, '-', lines);
 		mvwprintw(win, 0, 0, "%s/s", bytestostr(max, siunits));
 		mvwprintw(win, lines-1, 0, "%s/s", bytestostr(0.0, siunits));
 	}
@@ -368,7 +369,7 @@ int main(int argc, char **argv) {
 	bool syncgraphmax = false;
 	bool fixedlines = false;
 
-	memset(&ifa, 0, sizeof ifa);
+	memset(&ifa, 0, sizeof(ifa));
 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp("-v", argv[i]))
