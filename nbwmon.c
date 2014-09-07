@@ -294,6 +294,7 @@ char *bytestostr(double bytes, bool siunits) {
 void printgraphw(WINDOW *win, unsigned long *array, double max, bool siunits,
 		int lines, int cols, bool hidescale, int color) {
 	int y, x;
+	int barheight;
 
 	werase(win);
 
@@ -309,13 +310,19 @@ void printgraphw(WINDOW *win, unsigned long *array, double max, bool siunits,
 
 	wattron(win, color);
 	for (y = 0; y < lines; y++)
-		for (x = 0; x < cols; x++)
-			if (lines - 1 - array[x] / max * lines < y) {
+		for (x = 0; x < cols; x++) {
+			if (hidescale)
+				barheight = lines - 1 - array[x] / max * lines;
+			else
+				barheight = lines - 1 - array[x+1] / max * lines;
+
+			if (barheight < y) {
 				if (!hidescale)
 					mvwaddch(win, y+1, x+1, '*');
 				else
 					mvwaddch(win, y, x, '*');
 			}
+		}
 	wattroff(win, color);
 
 	wnoutrefresh(win);
@@ -420,9 +427,15 @@ int main(int argc, char **argv) {
 	}
 
 	signal(SIGWINCH, sighandler);
-	ifa.rxs = ecalloc(COLS, sizeof(long));
-	ifa.txs = ecalloc(COLS, sizeof(long));
 	mvprintw(0, 0, "collecting data from %s for %.2f seconds\n", ifa.ifname, delay);
+
+	if (hidescale) {
+		ifa.rxs = ecalloc(COLS, sizeof(long));
+		ifa.txs = ecalloc(COLS, sizeof(long));
+	} else {
+		ifa.rxs = ecalloc(COLS-1, sizeof(long));
+		ifa.txs = ecalloc(COLS-1, sizeof(long));
+	}
 
 	if (!fixedlines)
 		graphlines = (LINES-5)/2;
@@ -451,8 +464,13 @@ int main(int argc, char **argv) {
 			endwin();
 			refresh();
 
-			arrayresize(&ifa.rxs, COLS, colsold);
-			arrayresize(&ifa.txs, COLS, colsold);
+			if (hidescale) {
+				arrayresize(&ifa.rxs, COLS, colsold);
+				arrayresize(&ifa.txs, COLS, colsold);
+			} else {
+				arrayresize(&ifa.rxs, COLS-1, colsold-1);
+				arrayresize(&ifa.txs, COLS-1, colsold-1);
+			}
 
 			if (LINES != linesold && !fixedlines)
 				graphlines = (LINES-5)/2;
