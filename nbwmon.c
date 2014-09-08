@@ -23,8 +23,6 @@
 
 #define VERSION "0.4"
 
-#define MAX(A,B) ((A) > (B) ? (A) : (B))
-
 struct iface {
 	char ifname[IFNAMSIZ];
 	unsigned long long rx;
@@ -295,10 +293,14 @@ void printgraphw(WINDOW *win, char *name, unsigned long *array, double max, bool
 		int lines, int cols, bool hidescale, int color) {
 	int y, x;
 	int barheight;
+	int firstline;
 
 	werase(win);
 
-	if (!hidescale) {
+	if (hidescale)
+		firstline = lines - 1;
+	else {
+		firstline = lines - 3;
 		mvwvline(win, 0, 0, '-', lines);
 		mvwhline(win, 0, 0, ACS_HLINE, cols);
 		mvwhline(win, lines-1, 0, ACS_HLINE, cols);
@@ -313,10 +315,12 @@ void printgraphw(WINDOW *win, char *name, unsigned long *array, double max, bool
 	wattron(win, color);
 	for (y = 0; y < lines; y++)
 		for (x = 0; x < cols; x++) {
-			if (hidescale)
-				barheight = lines - 1 - array[x] / max * lines;
+			if (!max)
+				barheight = firstline;
+			else if (hidescale)
+				barheight = firstline - array[x] / max * lines;
 			else
-				barheight = lines - 1 - array[x+1] / max * lines;
+				barheight = firstline - array[x+1] / max * lines;
 
 			if (barheight < y) {
 				if (!hidescale)
@@ -362,9 +366,8 @@ void usage(char **argv) {
 			"-h    help\n"
 			"-v    version\n"
 			"-C    no colors\n"
-			"-s    SI units\n"
+			"-s    use SI units\n"
 			"-S    hide graph scale\n"
-			"-m    sync RX and TX max\n"
 			"\n"
 			"-d <seconds>      redraw delay\n"
 			"-i <interface>    network interface\n"
@@ -384,7 +387,6 @@ int main(int argc, char **argv) {
 	bool colors = true;
 	bool siunits = false;
 	bool hidescale = false;
-	bool syncgraphmax = false;
 	bool fixedlines = false;
 
 	memset(&ifa, 0, sizeof(ifa));
@@ -398,8 +400,6 @@ int main(int argc, char **argv) {
 			siunits = true;
 		else if (!strcmp("-S", argv[i]))
 			hidescale = true;
-		else if (!strcmp("-m", argv[i]))
-			syncgraphmax = true;
 		else if (argv[i+1] == NULL || argv[i+1][0] == '-')
 			usage(argv);
 		else if (!strcmp("-d", argv[i]))
@@ -456,9 +456,6 @@ int main(int argc, char **argv) {
 
 		if (!getdata(&ifa, delay, COLS))
 			eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
-
-		if (syncgraphmax)
-			ifa.rxmax = ifa.txmax = MAX(ifa.rxmax, ifa.txmax);
 
 		if (resize) {
 			linesold = LINES;
