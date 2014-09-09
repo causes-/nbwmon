@@ -136,27 +136,36 @@ unsigned long arraymax(unsigned long *array, size_t n) {
 }
 
 bool detectiface(char *ifname) {
+	bool retval = false;
 	struct ifaddrs *ifas, *ifa;
 
 	if (getifaddrs(&ifas) == -1)
 		return false;
 
-	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
-		if (ifa->ifa_flags & IFF_LOOPBACK)
-			continue;
-		if (ifa->ifa_flags & IFF_RUNNING) {
-			if (ifa->ifa_flags & IFF_UP) {
-				strlcpy(ifname, ifa->ifa_name, IFNAMSIZ);
+	if (*ifname) {
+		for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
+			if (!strncmp(ifname, ifa->ifa_name, IFNAMSIZ)) {
+				retval = true;
 				break;
+			}
+		}
+	} else {
+		for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
+			if (ifa->ifa_flags & IFF_LOOPBACK)
+				continue;
+			if (ifa->ifa_flags & IFF_RUNNING) {
+				if (ifa->ifa_flags & IFF_UP) {
+					strlcpy(ifname, ifa->ifa_name, IFNAMSIZ);
+					retval = true;
+					break;
+				}
 			}
 		}
 	}
 
 	freeifaddrs(ifas);
 
-	if (*ifname == '\0')
-		return false;
-	return true;
+	return retval;
 }
 
 #ifdef __linux__
@@ -404,7 +413,7 @@ int main(int argc, char **argv) {
 
 	ARGBEGIN {
 	case 'v':
-		eprintf("%s-%s\n", argv[0], VERSION);
+		eprintf("%s-%s\n", argv0, VERSION);
 	case 'C':
 		colors = false;
 		break;
@@ -429,9 +438,8 @@ int main(int argc, char **argv) {
 		usage();
 	} ARGEND;
 
-	if (ifa.ifname[0] == '\0')
-		if (!detectiface(ifa.ifname))
-			eprintf("can't detect network interface\n");
+	if (!detectiface(ifa.ifname))
+		eprintf("can't detect network interface\n");
 
 	initscr();
 	curs_set(0);
