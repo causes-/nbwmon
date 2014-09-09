@@ -21,7 +21,6 @@ usage: nbwmon [options]
 -C    no colors
 -s    SI units
 -S    hide graph scale
--m    sync RX and TX max
 
 -d <seconds>      redraw delay
 -i <interface>    network interface

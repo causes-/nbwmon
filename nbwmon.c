@@ -2,7 +2,7 @@
 
 #ifdef __linux__
 #include <linux/if_link.h>
-#elif __OpenBSD__
+#elif __OpenBSD__ || __NetBSD__
 #include <sys/socket.h>
 #include <sys/sysctl.h>
 #include <net/if_dl.h>
@@ -17,9 +17,15 @@
 #include <stdarg.h>
 #include <string.h>
 #include <signal.h>
+#ifdef __NetBSD__
+#include <ncurses/ncurses.h>
+#else
 #include <ncurses.h>
+#endif
 #include <ifaddrs.h>
 #include <net/if.h>
+
+#include "arg.h"
 
 #define VERSION "0.4"
 
@@ -34,6 +40,8 @@ struct iface {
 	unsigned long rxmax;
 	unsigned long txmax;
 };
+
+char *argv0;
 
 static sig_atomic_t resize;
 
@@ -136,9 +144,12 @@ bool detectiface(char *ifname) {
 	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
 		if (ifa->ifa_flags & IFF_LOOPBACK)
 			continue;
-		if (ifa->ifa_flags & IFF_RUNNING)
-			if (ifa->ifa_flags & IFF_UP)
+		if (ifa->ifa_flags & IFF_RUNNING) {
+			if (ifa->ifa_flags & IFF_UP) {
 				strlcpy(ifname, ifa->ifa_name, IFNAMSIZ);
+				break;
+			}
+		}
 	}
 
 	freeifaddrs(ifas);
@@ -175,7 +186,7 @@ static bool getcounters(char *ifname, unsigned long long *rx, unsigned long long
 	return true;
 }
 
-#elif __OpenBSD__
+#elif __OpenBSD__ || __NetBSD__
 static bool getcounters(char *ifname, unsigned long long *rx, unsigned long long *tx) {
 	int mib[6];
 	char *buf, *next;
@@ -360,7 +371,7 @@ void printstatsw(WINDOW *win, struct iface ifa, bool siunits, int cols) {
 	wnoutrefresh(win);
 }
 
-void usage(char **argv) {
+void usage(void) {
 	eprintf("usage: %s [options]\n"
 			"\n"
 			"-h    help\n"
@@ -372,15 +383,15 @@ void usage(char **argv) {
 			"-d <seconds>      redraw delay\n"
 			"-i <interface>    network interface\n"
 			"-l <lines>        fixed graph height\n"
-			, argv[0]);
+			, argv0);
 }
 
 int main(int argc, char **argv) {
-	int i;
+	char *arg;
 	int linesold, colsold;
 	int graphlines = 0;
 	double delay = 0.5;
-	char key;
+	int key;
 	struct iface ifa;
 	WINDOW *title, *rxgraph, *txgraph, *stats;
 
@@ -391,26 +402,32 @@ int main(int argc, char **argv) {
 
 	memset(&ifa, 0, sizeof(ifa));
 
-	for (i = 1; i < argc; i++) {
-		if (!strcmp("-v", argv[i]))
-			eprintf("%s-%s\n", argv[0], VERSION);
-		else if (!strcmp("-C", argv[i]))
-			colors = false;
-		else if (!strcmp("-s", argv[i]))
-			siunits = true;
-		else if (!strcmp("-S", argv[i]))
-			hidescale = true;
-		else if (argv[i+1] == NULL || argv[i+1][0] == '-')
-			usage(argv);
-		else if (!strcmp("-d", argv[i]))
-			delay = estrtod(argv[++i]);
-		else if (!strcmp("-i", argv[i]))
-			strlcpy(ifa.ifname, argv[++i], IFNAMSIZ);
-		else if (!strcmp("-l", argv[i])) {
-			graphlines = estrtol(argv[++i]);
-			fixedlines = true;
-		}
-	}
+	ARGBEGIN {
+	case 'v':
+		eprintf("%s-%s\n", argv[0], VERSION);
+	case 'C':
+		colors = false;
+		break;
+	case 's':
+		siunits = true;
+		break;
+	case 'S':
+		hidescale = true;
+		break;
+	case 'd':
+		delay = estrtod(EARGF(usage()));
+		break;
+	case 'i':
+		arg = EARGF(usage());
+		strlcpy(ifa.ifname, arg, IFNAMSIZ);
+		break;
+	case 'l':
+		graphlines = estrtol(EARGF(usage()));
+		fixedlines = true;
+		break;
+	default:
+		usage();
+	} ARGEND;
 
 	if (ifa.ifname[0] == '\0')
 		if (!detectiface(ifa.ifname))
