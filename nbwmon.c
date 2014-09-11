@@ -269,7 +269,7 @@ bool getdata(struct iface *ifa, double delay, int cols) {
 	return true;
 }
 
-bool arrayresize(unsigned long **array, size_t newsize, size_t oldsize) {
+size_t arrayresize(unsigned long **array, size_t newsize, size_t oldsize) {
 	unsigned long *arraytmp;
 
 	if (newsize == oldsize)
@@ -285,7 +285,7 @@ bool arrayresize(unsigned long **array, size_t newsize, size_t oldsize) {
 
 	free(arraytmp);
 
-	return true;
+	return newsize;
 }
 
 char *bytestostr(double bytes, bool siunits) {
@@ -309,46 +309,38 @@ char *bytestostr(double bytes, bool siunits) {
 	return str;
 }
 
-void printgraphw(WINDOW *win, char *name, unsigned long *array, double max, bool siunits,
-		int lines, int cols, bool hidescale, int color) {
+void printgraphw(WINDOW *win, char *name,
+		unsigned long *array, unsigned long max, bool siunits,
+		int lines, int cols, int color) {
+
 	int y, x;
 	int barheight;
 	int firstline;
 
 	werase(win);
 
-	if (hidescale)
-		firstline = lines - 1;
-	else {
-		firstline = lines - 3;
-		mvwvline(win, 0, 0, '-', lines);
-		mvwhline(win, 0, 0, ACS_HLINE, cols);
-		mvwhline(win, lines-1, 0, ACS_HLINE, cols);
-		if (name)
-			mvwprintw(win, 0, cols-strlen(name), name);
-		mvwprintw(win, 0, 0, "[ %s/s ]", bytestostr(max, siunits));
-		mvwprintw(win, lines-1, 0, "[ %s/s ]", bytestostr(0.0, siunits));
-		lines -= 2;
-		cols--;
-	}
+	box(win, 0, 0);
+	mvwvline(win, 0, 1, '-', lines-1);
+	if (name)
+		mvwprintw(win, 0, cols-strlen(name)-1, name);
+	mvwprintw(win, 0, 1, "[ %s/s ]", bytestostr(max, siunits));
+	mvwprintw(win, lines-1, 1, "[ %s/s ]", bytestostr(0.0, siunits));
+
+	lines -= 2;
+	cols -= 3;
+	firstline = lines - 1;
 
 	wattron(win, color);
-	for (y = 0; y < lines; y++)
+	for (y = 0; y < lines; y++) {
 		for (x = 0; x < cols; x++) {
-			if (!max)
-				barheight = firstline;
-			else if (hidescale)
-				barheight = firstline - array[x] / max * lines;
-			else
-				barheight = firstline - array[x+1] / max * lines;
+			if (array[x] && max) {
+				barheight = firstline - ((double) array[x] / max * lines);
 
-			if (barheight < y) {
-				if (!hidescale)
-					mvwaddch(win, y+1, x+1, '*');
-				else
-					mvwaddch(win, y, x, '*');
+				if (barheight < y)
+					mvwaddch(win, y+1, x+2, '*');
 			}
 		}
+	}
 	wattroff(win, color);
 
 	wnoutrefresh(win);
@@ -387,7 +379,6 @@ void usage(void) {
 			"-v    version\n"
 			"-C    no colors\n"
 			"-s    use SI units\n"
-			"-S    hide graph scale\n"
 			"\n"
 			"-d <seconds>      redraw delay\n"
 			"-i <interface>    network interface\n"
@@ -406,7 +397,6 @@ int main(int argc, char **argv) {
 
 	bool colors = true;
 	bool siunits = false;
-	bool hidescale = false;
 	bool fixedlines = false;
 
 	memset(&ifa, 0, sizeof(ifa));
@@ -419,9 +409,6 @@ int main(int argc, char **argv) {
 		break;
 	case 's':
 		siunits = true;
-		break;
-	case 'S':
-		hidescale = true;
 		break;
 	case 'd':
 		delay = estrtod(EARGF(usage()));
@@ -456,13 +443,8 @@ int main(int argc, char **argv) {
 	signal(SIGWINCH, sighandler);
 	mvprintw(0, 0, "collecting data from %s for %.2f seconds\n", ifa.ifname, delay);
 
-	if (hidescale) {
-		ifa.rxs = ecalloc(COLS, sizeof(long));
-		ifa.txs = ecalloc(COLS, sizeof(long));
-	} else {
-		ifa.rxs = ecalloc(COLS-1, sizeof(long));
-		ifa.txs = ecalloc(COLS-1, sizeof(long));
-	}
+	ifa.rxs = ecalloc(COLS-2, sizeof(*ifa.rxs));
+	ifa.txs = ecalloc(COLS-2, sizeof(*ifa.txs));
 
 	if (!fixedlines)
 		graphlines = (LINES-5)/2;
@@ -472,14 +454,14 @@ int main(int argc, char **argv) {
 	txgraph = newwin(graphlines, COLS, graphlines+1, 0);
 	stats = newwin(LINES-(graphlines*2+1), COLS, graphlines*2+1, 0);
 
-	if (!getdata(&ifa, delay, COLS))
+	if (!getdata(&ifa, delay, COLS-2))
 		eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
 
 	while ((key = getch()) != 'q') {
 		if (key != ERR)
 			resize = 1;
 
-		if (!getdata(&ifa, delay, COLS))
+		if (!getdata(&ifa, delay, COLS-2))
 			eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
 
 		if (resize) {
@@ -488,13 +470,8 @@ int main(int argc, char **argv) {
 			endwin();
 			refresh();
 
-			if (hidescale) {
-				arrayresize(&ifa.rxs, COLS, colsold);
-				arrayresize(&ifa.txs, COLS, colsold);
-			} else {
-				arrayresize(&ifa.rxs, COLS-1, colsold-1);
-				arrayresize(&ifa.txs, COLS-1, colsold-1);
-			}
+			arrayresize(&ifa.rxs, COLS-2, colsold-2);
+			arrayresize(&ifa.txs, COLS-2, colsold-2);
 
 			if (LINES != linesold && !fixedlines)
 				graphlines = (LINES-5)/2;
@@ -505,16 +482,17 @@ int main(int argc, char **argv) {
 			wresize(stats, LINES-(graphlines*2+1), COLS);
 			mvwin(txgraph, graphlines+1, 0);
 			mvwin(stats, graphlines*2+1, 0);
+
 			resize = 0;
 		}
 
 		werase(title);
-		mvwprintw(title, 0, COLS/2-7, "interface: %s\n", ifa.ifname);
+		mvwprintw(title, 0, COLS/2-8, "interface: %s\n", ifa.ifname);
 		wnoutrefresh(title);
 		printgraphw(rxgraph, "[ RX ]", ifa.rxs, ifa.rxmax, siunits,
-				graphlines, COLS, hidescale, COLOR_PAIR(1));
+				graphlines, COLS, COLOR_PAIR(1));
 		printgraphw(txgraph, "[ TX ]", ifa.txs, ifa.txmax, siunits,
-				graphlines, COLS, hidescale, COLOR_PAIR(2));
+				graphlines, COLS, COLOR_PAIR(2));
 		printstatsw(stats, ifa, siunits, COLS);
 		doupdate();
 	}
