@@ -254,8 +254,8 @@ bool getdata(struct iface *ifa, double delay, int cols) {
 		memmove(ifa->rxs, ifa->rxs+1, sizeof(long) * (cols - 1));
 		memmove(ifa->txs, ifa->txs+1, sizeof(long) * (cols - 1));
 
-		ifa->rxs[cols-1] = (ifa->rx - rx) / delay;
-		ifa->txs[cols-1] = (ifa->tx - tx) / delay;
+		ifa->rxs[cols - 1] = (ifa->rx - rx) / delay;
+		ifa->txs[cols - 1] = (ifa->tx - tx) / delay;
 
 		ifa->rxavg = arrayavg(ifa->rxs, cols);
 		ifa->txavg = arrayavg(ifa->txs, cols);
@@ -382,7 +382,6 @@ void usage(void) {
 			"\n"
 			"-d <seconds>      redraw delay\n"
 			"-i <interface>    network interface\n"
-			"-l <lines>        fixed graph height\n"
 			, argv0);
 }
 
@@ -438,8 +437,8 @@ int main(int argc, char **argv) {
 	signal(SIGWINCH, sighandler);
 	mvprintw(0, 0, "collecting data from %s for %.2f seconds\n", ifa.ifname, delay);
 
-	ifa.rxs = ecalloc(COLS - 2, sizeof(*ifa.rxs));
-	ifa.txs = ecalloc(COLS - 2, sizeof(*ifa.txs));
+	ifa.rxs = ecalloc(COLS - 3, sizeof(*ifa.rxs));
+	ifa.txs = ecalloc(COLS - 3, sizeof(*ifa.txs));
 
 	graphlines = (LINES - 5) / 2;
 
@@ -448,14 +447,14 @@ int main(int argc, char **argv) {
 	txgraph = newwin(graphlines, COLS, graphlines + 1, 0);
 	stats = newwin(LINES - (graphlines * 2 + 1), COLS, graphlines * 2 + 1, 0);
 
-	if (!getdata(&ifa, delay, COLS-2))
+	if (!getdata(&ifa, delay, COLS-3))
 		eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
 
 	while ((key = getch()) != 'q') {
 		if (key != ERR)
 			resize = 1;
 
-		if (!getdata(&ifa, delay, COLS-2))
+		if (!getdata(&ifa, delay, COLS-3))
 			eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
 
 		if (resize) {
@@ -463,23 +462,23 @@ int main(int argc, char **argv) {
 			endwin();
 			refresh();
 
-			arrayresize(&ifa.rxs, COLS - 2, colsold - 2);
-			arrayresize(&ifa.txs, COLS - 2, colsold - 2);
+			arrayresize(&ifa.rxs, COLS - 3, colsold - 3);
+			arrayresize(&ifa.txs, COLS - 3, colsold - 3);
 
 			graphlines = (LINES - 5) / 2;
 
 			wresize(title, 1, COLS);
 			wresize(rxgraph, graphlines, COLS);
 			wresize(txgraph, graphlines, COLS);
-			wresize(stats, LINES-(graphlines*2+1), COLS);
-			mvwin(txgraph, graphlines+1, 0);
-			mvwin(stats, graphlines*2+1, 0);
+			wresize(stats, LINES - (graphlines * 2 + 1), COLS);
+			mvwin(txgraph, graphlines + 1, 0);
+			mvwin(stats, graphlines * 2 + 1, 0);
 
 			resize = 0;
 		}
 
 		werase(title);
-		mvwprintw(title, 0, COLS/2-8, "interface: %s\n", ifa.ifname);
+		mvwprintw(title, 0, COLS / 2 - 8, "interface: %s\n", ifa.ifname);
 		wnoutrefresh(title);
 		printgraphw(rxgraph, "[ RX ]", ifa.rxs, ifa.rxmax, siunits,
 				graphlines, COLS, COLOR_PAIR(1));
