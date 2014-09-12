@@ -251,8 +251,8 @@ bool getdata(struct iface *ifa, double delay, int cols) {
 		if (!getcounters(ifa->ifname, &ifa->rx, &ifa->tx))
 			return false;
 
-		memmove(ifa->rxs, ifa->rxs+1, sizeof(long) * (cols-1));
-		memmove(ifa->txs, ifa->txs+1, sizeof(long) * (cols-1));
+		memmove(ifa->rxs, ifa->rxs+1, sizeof(long) * (cols - 1));
+		memmove(ifa->txs, ifa->txs+1, sizeof(long) * (cols - 1));
 
 		ifa->rxs[cols-1] = (ifa->rx - rx) / delay;
 		ifa->txs[cols-1] = (ifa->tx - tx) / delay;
@@ -337,7 +337,7 @@ void printgraphw(WINDOW *win, char *name,
 				barheight = firstline - ((double) array[x] / max * lines);
 
 				if (barheight < y)
-					mvwaddch(win, y+1, x+2, '*');
+					mvwaddch(win, y + 1, x + 2, '*');
 			}
 		}
 	}
@@ -356,8 +356,8 @@ void printstatsw(WINDOW *win, struct iface ifa, bool siunits, int cols) {
 	fmt = "%6s %s/s";
 	colrx = cols / 4 - 8;
 	coltx = colrx + cols / 2 + 1;
-	mvwprintw(win, line, colrx, fmt, "RX:", bytestostr(ifa.rxs[cols-1], siunits));
-	mvwprintw(win, line++, coltx, fmt, "TX:", bytestostr(ifa.txs[cols-1], siunits));
+	mvwprintw(win, line, colrx, fmt, "RX:", bytestostr(ifa.rxs[cols - 1], siunits));
+	mvwprintw(win, line++, coltx, fmt, "TX:", bytestostr(ifa.txs[cols - 1], siunits));
 
 	mvwprintw(win, line, colrx, fmt, "avg:", bytestostr(ifa.rxavg, siunits));
 	mvwprintw(win, line++, coltx, fmt, "avg:", bytestostr(ifa.txavg, siunits));
@@ -388,16 +388,15 @@ void usage(void) {
 
 int main(int argc, char **argv) {
 	char *arg;
-	int linesold, colsold;
-	int graphlines = 0;
-	double delay = 0.5;
 	int key;
+	int colsold;
+	int graphlines;
 	struct iface ifa;
 	WINDOW *title, *rxgraph, *txgraph, *stats;
 
 	bool colors = true;
 	bool siunits = false;
-	bool fixedlines = false;
+	double delay = 0.5;
 
 	memset(&ifa, 0, sizeof(ifa));
 
@@ -416,10 +415,6 @@ int main(int argc, char **argv) {
 	case 'i':
 		arg = EARGF(usage());
 		strlcpy(ifa.ifname, arg, IFNAMSIZ);
-		break;
-	case 'l':
-		graphlines = estrtol(EARGF(usage()));
-		fixedlines = true;
 		break;
 	default:
 		usage();
@@ -443,16 +438,15 @@ int main(int argc, char **argv) {
 	signal(SIGWINCH, sighandler);
 	mvprintw(0, 0, "collecting data from %s for %.2f seconds\n", ifa.ifname, delay);
 
-	ifa.rxs = ecalloc(COLS-2, sizeof(*ifa.rxs));
-	ifa.txs = ecalloc(COLS-2, sizeof(*ifa.txs));
+	ifa.rxs = ecalloc(COLS - 2, sizeof(*ifa.rxs));
+	ifa.txs = ecalloc(COLS - 2, sizeof(*ifa.txs));
 
-	if (!fixedlines)
-		graphlines = (LINES-5)/2;
+	graphlines = (LINES - 5) / 2;
 
 	title = newwin(1, COLS, 0, 0);
 	rxgraph = newwin(graphlines, COLS, 1, 0);
-	txgraph = newwin(graphlines, COLS, graphlines+1, 0);
-	stats = newwin(LINES-(graphlines*2+1), COLS, graphlines*2+1, 0);
+	txgraph = newwin(graphlines, COLS, graphlines + 1, 0);
+	stats = newwin(LINES - (graphlines * 2 + 1), COLS, graphlines * 2 + 1, 0);
 
 	if (!getdata(&ifa, delay, COLS-2))
 		eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
@@ -465,16 +459,14 @@ int main(int argc, char **argv) {
 			eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
 
 		if (resize) {
-			linesold = LINES;
 			colsold = COLS;
 			endwin();
 			refresh();
 
-			arrayresize(&ifa.rxs, COLS-2, colsold-2);
-			arrayresize(&ifa.txs, COLS-2, colsold-2);
+			arrayresize(&ifa.rxs, COLS - 2, colsold - 2);
+			arrayresize(&ifa.txs, COLS - 2, colsold - 2);
 
-			if (LINES != linesold && !fixedlines)
-				graphlines = (LINES-5)/2;
+			graphlines = (LINES - 5) / 2;
 
 			wresize(title, 1, COLS);
 			wresize(rxgraph, graphlines, COLS);
@@ -493,7 +485,7 @@ int main(int argc, char **argv) {
 				graphlines, COLS, COLOR_PAIR(1));
 		printgraphw(txgraph, "[ TX ]", ifa.txs, ifa.txmax, siunits,
 				graphlines, COLS, COLOR_PAIR(2));
-		printstatsw(stats, ifa, siunits, COLS);
+		printstatsw(stats, ifa, siunits, COLS - 2);
 		doupdate();
 	}
 
