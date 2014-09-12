@@ -484,7 +484,7 @@ int main(int argc, char **argv) {
 				graphlines, COLS, COLOR_PAIR(1));
 		printgraphw(txgraph, "[ TX ]", ifa.txs, ifa.txmax, siunits,
 				graphlines, COLS, COLOR_PAIR(2));
-		printstatsw(stats, ifa, siunits, COLS - 2);
+		printstatsw(stats, ifa, siunits, COLS - 3);
 		doupdate();
 	}
 
