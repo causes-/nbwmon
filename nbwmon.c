@@ -184,6 +184,7 @@ static bool getcounters(char *ifname, unsigned long long *rx, unsigned long long
 				stats = ifa->ifa_data;
 				*rx = stats->rx_bytes;
 				*tx = stats->tx_bytes;
+				break;
 			}
 		}
 	}
@@ -322,7 +323,7 @@ void printgraphw(WINDOW *win, char *name,
 	box(win, 0, 0);
 	mvwvline(win, 0, 1, '-', lines-1);
 	if (name)
-		mvwprintw(win, 0, cols-strlen(name)-1, name);
+		mvwprintw(win, 0, cols - 1 - strlen(name), name);
 	mvwprintw(win, 0, 1, "[ %s/s ]", bytestostr(max, siunits));
 	mvwprintw(win, lines-1, 1, "[ %s/s ]", bytestostr(0.0, siunits));
 
@@ -346,28 +347,33 @@ void printgraphw(WINDOW *win, char *name,
 	wnoutrefresh(win);
 }
 
-void printstatsw(WINDOW *win, struct iface ifa, bool siunits, int cols) {
-	int colrx, coltx;
-	char *fmt;
-	int line = 0;
+void printstatsw(WINDOW *win, char *name,
+		unsigned long cur, unsigned long avg,
+		unsigned long max, unsigned long long total,
+		bool siunits, int cols) {
 
+	char *str;
 	werase(win);
 
-	fmt = "%6s %s/s";
-	colrx = cols / 4 - 8;
-	coltx = colrx + cols / 2 + 1;
-	mvwprintw(win, line, colrx, fmt, "RX:", bytestostr(ifa.rxs[cols - 1], siunits));
-	mvwprintw(win, line++, coltx, fmt, "TX:", bytestostr(ifa.txs[cols - 1], siunits));
+	box(win, 0, 0);
+	if (name)
+		mvwprintw(win, 0, 1, "%s", name);
 
-	mvwprintw(win, line, colrx, fmt, "avg:", bytestostr(ifa.rxavg, siunits));
-	mvwprintw(win, line++, coltx, fmt, "avg:", bytestostr(ifa.txavg, siunits));
+	str = bytestostr(cur, siunits);
+	mvwprintw(win, 1, 1, "current:");
+	mvwprintw(win, 1, cols - 3 - strlen(str), "%s/s", str);
 
-	mvwprintw(win, line, colrx, fmt, "max:", bytestostr(ifa.rxmax, siunits));
-	mvwprintw(win, line++, coltx, fmt, "max:", bytestostr(ifa.txmax, siunits));
+	str = bytestostr(avg, siunits);
+	mvwprintw(win, 2, 1, "average:");
+	mvwprintw(win, 2, cols - 3 - strlen(str), "%s/s", str);
 
-	fmt = "%6s %s";
-	mvwprintw(win, line, colrx, fmt, "total:", bytestostr(ifa.rx, siunits));
-	mvwprintw(win, line++, coltx, fmt, "total:", bytestostr(ifa.tx, siunits));
+	str = bytestostr(max, siunits);
+	mvwprintw(win, 3, 1, "maximum:");
+	mvwprintw(win, 3, cols - 3 - strlen(str), "%s/s", str);
+
+	str = bytestostr(total, siunits);
+	mvwprintw(win, 4, 1, "total:");
+	mvwprintw(win, 4, cols - 1 - strlen(str), "%s", str);
 
 	wnoutrefresh(win);
 }
@@ -391,7 +397,7 @@ int main(int argc, char **argv) {
 	int colsold;
 	int graphlines;
 	struct iface ifa;
-	WINDOW *title, *rxgraph, *txgraph, *stats;
+	WINDOW *title, *rxgraph, *txgraph, *rxstats, *txstats;
 
 	bool colors = true;
 	bool siunits = false;
@@ -420,7 +426,7 @@ int main(int argc, char **argv) {
 	} ARGEND;
 
 	if (!detectiface(ifa.ifname))
-		eprintf("can't detect network interface\n");
+		eprintf("can't find network interface\n");
 
 	initscr();
 	curs_set(0);
@@ -440,21 +446,22 @@ int main(int argc, char **argv) {
 	ifa.rxs = ecalloc(COLS - 3, sizeof(*ifa.rxs));
 	ifa.txs = ecalloc(COLS - 3, sizeof(*ifa.txs));
 
-	graphlines = (LINES - 5) / 2;
+	graphlines = (LINES - 7) / 2;
 
 	title = newwin(1, COLS, 0, 0);
 	rxgraph = newwin(graphlines, COLS, 1, 0);
 	txgraph = newwin(graphlines, COLS, graphlines + 1, 0);
-	stats = newwin(LINES - (graphlines * 2 + 1), COLS, graphlines * 2 + 1, 0);
+	rxstats = newwin(6, COLS / 2, graphlines * 2 + 1, 0);
+	txstats = newwin(6, COLS / 2, graphlines * 2 + 1, COLS / 2);
 
-	if (!getdata(&ifa, delay, COLS-3))
+	if (!getdata(&ifa, delay, COLS - 3))
 		eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
 
 	while ((key = getch()) != 'q') {
 		if (key != ERR)
 			resize = 1;
 
-		if (!getdata(&ifa, delay, COLS-3))
+		if (!getdata(&ifa, delay, COLS - 3))
 			eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
 
 		if (resize) {
@@ -465,35 +472,48 @@ int main(int argc, char **argv) {
 			arrayresize(&ifa.rxs, COLS - 3, colsold - 3);
 			arrayresize(&ifa.txs, COLS - 3, colsold - 3);
 
-			graphlines = (LINES - 5) / 2;
+			graphlines = (LINES - 7) / 2;
 
 			wresize(title, 1, COLS);
 			wresize(rxgraph, graphlines, COLS);
 			wresize(txgraph, graphlines, COLS);
-			wresize(stats, LINES - (graphlines * 2 + 1), COLS);
+			wresize(rxstats, 6, COLS / 2);
+			wresize(txstats, 6, COLS / 2);
 			mvwin(txgraph, graphlines + 1, 0);
-			mvwin(stats, graphlines * 2 + 1, 0);
+			mvwin(rxstats, graphlines * 2 + 1, 0);
+			mvwin(txstats, graphlines * 2 + 1, COLS / 2);
 
 			resize = 0;
 		}
 
 		werase(title);
-		mvwprintw(title, 0, COLS / 2 - 8, "interface: %s\n", ifa.ifname);
+		mvwprintw(title, 0, COLS / 2 - 8, "[ interface: %s ]", ifa.ifname);
 		wnoutrefresh(title);
-		printgraphw(rxgraph, "[ RX ]", ifa.rxs, ifa.rxmax, siunits,
+
+		printgraphw(rxgraph, "[ Received ]", ifa.rxs, ifa.rxmax, siunits,
 				graphlines, COLS, COLOR_PAIR(1));
-		printgraphw(txgraph, "[ TX ]", ifa.txs, ifa.txmax, siunits,
+		printgraphw(txgraph, "[ Transmitted ]", ifa.txs, ifa.txmax, siunits,
 				graphlines, COLS, COLOR_PAIR(2));
-		printstatsw(stats, ifa, siunits, COLS - 3);
+
+		printstatsw(rxstats, "[ Received ]",
+				ifa.rxs[COLS - 4], ifa.rxavg, ifa.rxmax, ifa.rx,
+				siunits, COLS/ 2);
+		printstatsw(txstats, "[ Transmitted ]",
+				ifa.txs[COLS - 4], ifa.txavg, ifa.txmax, ifa.tx,
+				siunits, COLS / 2);
+
 		doupdate();
 	}
 
 	delwin(title);
 	delwin(rxgraph);
 	delwin(txgraph);
-	delwin(stats);
+	delwin(rxstats);
+	delwin(txstats);
 	endwin();
+
 	free(ifa.rxs);
 	free(ifa.txs);
+
 	return EXIT_SUCCESS;
 }
