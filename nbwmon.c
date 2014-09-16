@@ -313,10 +313,7 @@ char *bytestostr(double bytes, bool siunits) {
 void printgraphw(WINDOW *win, char *name,
 		unsigned long *array, unsigned long max, bool siunits,
 		int lines, int cols, int color) {
-
 	int y, x;
-	int barheight;
-	int firstline;
 
 	werase(win);
 
@@ -327,17 +324,11 @@ void printgraphw(WINDOW *win, char *name,
 	mvwprintw(win, 0, 1, "[ %s/s ]", bytestostr(max, siunits));
 	mvwprintw(win, lines-1, 1, "[ %s/s ]", bytestostr(0.0, siunits));
 
-	lines -= 2;
-	cols -= 3;
-	firstline = lines - 1;
-
 	wattron(win, color);
-	for (y = 0; y < lines; y++) {
-		for (x = 0; x < cols; x++) {
+	for (y = 0; y < (lines - 2); y++) {
+		for (x = 0; x < (cols - 3); x++) {
 			if (array[x] && max) {
-				barheight = firstline - ((double) array[x] / max * lines);
-
-				if (barheight < y)
+				if (lines - 3 - ((double) array[x] / max * lines) < y)
 					mvwaddch(win, y + 1, x + 2, '*');
 			}
 		}
@@ -452,7 +443,7 @@ int main(int argc, char **argv) {
 	rxgraph = newwin(graphlines, COLS, 1, 0);
 	txgraph = newwin(graphlines, COLS, graphlines + 1, 0);
 	rxstats = newwin(6, COLS / 2, graphlines * 2 + 1, 0);
-	txstats = newwin(6, COLS / 2, graphlines * 2 + 1, COLS / 2);
+	txstats = newwin(6, COLS - COLS / 2, graphlines * 2 + 1, COLS / 2);
 
 	if (!getdata(&ifa, delay, COLS - 3))
 		eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
@@ -478,7 +469,7 @@ int main(int argc, char **argv) {
 			wresize(rxgraph, graphlines, COLS);
 			wresize(txgraph, graphlines, COLS);
 			wresize(rxstats, 6, COLS / 2);
-			wresize(txstats, 6, COLS / 2);
+			wresize(txstats, 6, COLS - COLS / 2);
 			mvwin(txgraph, graphlines + 1, 0);
 			mvwin(rxstats, graphlines * 2 + 1, 0);
 			mvwin(txstats, graphlines * 2 + 1, COLS / 2);
@@ -500,7 +491,7 @@ int main(int argc, char **argv) {
 				siunits, COLS/ 2);
 		printstatsw(txstats, "[ Transmitted ]",
 				ifa.txs[COLS - 4], ifa.txavg, ifa.txmax, ifa.tx,
-				siunits, COLS / 2);
+				siunits, COLS - COLS / 2);
 
 		doupdate();
 	}
