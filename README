@@ -19,9 +19,7 @@ usage: nbwmon [options]
 -h    help
 -v    version
 -C    no colors
--s    SI units
--S    hide graph scale
+-s    use SI units
 
 -d <seconds>      redraw delay
 -i <interface>    network interface
--l <lines>        fixed graph height
