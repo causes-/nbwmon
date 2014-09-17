@@ -442,8 +442,8 @@ int main(int argc, char **argv) {
 	title = newwin(1, COLS, 0, 0);
 	rxgraph = newwin(graphlines, COLS, 1, 0);
 	txgraph = newwin(graphlines, COLS, graphlines + 1, 0);
-	rxstats = newwin(6, COLS / 2, graphlines * 2 + 1, 0);
-	txstats = newwin(6, COLS - COLS / 2, graphlines * 2 + 1, COLS / 2);
+	rxstats = newwin(LINES - (graphlines * 2 + 1), COLS / 2, graphlines * 2 + 1, 0);
+	txstats = newwin(LINES - (graphlines * 2 + 1), COLS - COLS / 2, graphlines * 2 + 1, COLS / 2);
 
 	if (!getdata(&ifa, delay, COLS - 3))
 		eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
@@ -468,8 +468,8 @@ int main(int argc, char **argv) {
 			wresize(title, 1, COLS);
 			wresize(rxgraph, graphlines, COLS);
 			wresize(txgraph, graphlines, COLS);
-			wresize(rxstats, 6, COLS / 2);
-			wresize(txstats, 6, COLS - COLS / 2);
+			wresize(rxstats, LINES - (graphlines * 2 + 1), COLS / 2);
+			wresize(txstats, LINES - (graphlines * 2 + 1), COLS - COLS / 2);
 			mvwin(txgraph, graphlines + 1, 0);
 			mvwin(rxstats, graphlines * 2 + 1, 0);
 			mvwin(txstats, graphlines * 2 + 1, COLS / 2);
