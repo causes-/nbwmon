@@ -200,7 +200,7 @@ static bool getcounters(char *ifname, unsigned long long *rx, unsigned long long
 static bool getcounters(char *ifname, unsigned long long *rx, unsigned long long *tx) {
 	int mib[6];
 	char *buf, *next;
-	size_t sz;
+	size_t size;
 	struct if_msghdr *ifm;
 	struct sockaddr_dl *sdl;
 
@@ -214,13 +214,13 @@ static bool getcounters(char *ifname, unsigned long long *rx, unsigned long long
 	mib[4] = NET_RT_IFLIST;	/* no flags */
 	mib[5] = 0;
 
-	if (sysctl(mib, 6, NULL, &sz, NULL, 0) < 0)
+	if (sysctl(mib, 6, NULL, &size, NULL, 0) < 0)
 		return false;
-	buf = emalloc(sz);
-	if (sysctl(mib, 6, buf, &sz, NULL, 0) < 0)
+	buf = emalloc(size);
+	if (sysctl(mib, 6, buf, &size, NULL, 0) < 0)
 		return false;
 
-	for (next = buf; next < buf + sz; next += ifm->ifm_msglen) {
+	for (next = buf; next < buf + size; next += ifm->ifm_msglen) {
 		ifm = (struct if_msghdr *)next;
 		if (ifm->ifm_type != RTM_NEWADDR) {
 			if (ifm->ifm_flags & IFF_UP) {
@@ -303,8 +303,8 @@ char *bytestostr(double bytes, bool siunits) {
 	for (i = 0; bytes >= prefix && i < 9; i++)
 		bytes /= prefix;
 
-	unit = siunits ? si[i] : iec[i];
 	fmt = i ? "%.2f %s" : "%.0f %s";
+	unit = siunits ? si[i] : iec[i];
 	snprintf(str, sizeof(str), fmt, bytes, unit);
 
 	return str;
@@ -320,7 +320,7 @@ void printgraphw(WINDOW *win, char *name,
 	box(win, 0, 0);
 	mvwvline(win, 0, 1, '-', lines-1);
 	if (name)
-		mvwprintw(win, 0, cols - 1 - strlen(name), name);
+		mvwprintw(win, 0, cols - 5 - strlen(name), "[ %s ]",name);
 	mvwprintw(win, 0, 1, "[ %s/s ]", bytestostr(max, siunits));
 	mvwprintw(win, lines-1, 1, "[ %s/s ]", bytestostr(0.0, siunits));
 
@@ -348,22 +348,22 @@ void printstatsw(WINDOW *win, char *name,
 
 	box(win, 0, 0);
 	if (name)
-		mvwprintw(win, 0, 1, "%s", name);
+		mvwprintw(win, 0, 1, "[ %s ]", name);
 
-	str = bytestostr(cur, siunits);
 	mvwprintw(win, 1, 1, "current:");
+	str = bytestostr(cur, siunits);
 	mvwprintw(win, 1, cols - 3 - strlen(str), "%s/s", str);
 
-	str = bytestostr(avg, siunits);
 	mvwprintw(win, 2, 1, "average:");
+	str = bytestostr(avg, siunits);
 	mvwprintw(win, 2, cols - 3 - strlen(str), "%s/s", str);
 
-	str = bytestostr(max, siunits);
 	mvwprintw(win, 3, 1, "maximum:");
+	str = bytestostr(max, siunits);
 	mvwprintw(win, 3, cols - 3 - strlen(str), "%s/s", str);
 
-	str = bytestostr(total, siunits);
 	mvwprintw(win, 4, 1, "total:");
+	str = bytestostr(total, siunits);
 	mvwprintw(win, 4, cols - 1 - strlen(str), "%s", str);
 
 	wnoutrefresh(win);
@@ -481,15 +481,15 @@ int main(int argc, char **argv) {
 		mvwprintw(title, 0, COLS / 2 - 8, "[ interface: %s ]", ifa.ifname);
 		wnoutrefresh(title);
 
-		printgraphw(rxgraph, "[ Received ]", ifa.rxs, ifa.rxmax, siunits,
+		printgraphw(rxgraph, "Received", ifa.rxs, ifa.rxmax, siunits,
 				graphlines, COLS, COLOR_PAIR(1));
-		printgraphw(txgraph, "[ Transmitted ]", ifa.txs, ifa.txmax, siunits,
+		printgraphw(txgraph, "Transmitted", ifa.txs, ifa.txmax, siunits,
 				graphlines, COLS, COLOR_PAIR(2));
 
-		printstatsw(rxstats, "[ Received ]",
+		printstatsw(rxstats, "Received",
 				ifa.rxs[COLS - 4], ifa.rxavg, ifa.rxmax, ifa.rx,
-				siunits, COLS/ 2);
-		printstatsw(txstats, "[ Transmitted ]",
+				siunits, COLS / 2);
+		printstatsw(txstats, "Transmitted",
 				ifa.txs[COLS - 4], ifa.txavg, ifa.txmax, ifa.tx,
 				siunits, COLS - COLS / 2);
 
