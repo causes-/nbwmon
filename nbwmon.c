@@ -27,7 +27,7 @@
 
 #include "arg.h"
 
-#define VERSION "0.4"
+#define VERSION "0.4.1"
 
 struct iface {
 	char ifname[IFNAMSIZ];
@@ -204,7 +204,6 @@ static bool getcounters(char *ifname, unsigned long long *rx, unsigned long long
 	struct if_msghdr *ifm;
 	struct sockaddr_dl *sdl;
 
-	buf = NULL;
 	sdl = NULL;
 
 	mib[0] = CTL_NET;
@@ -342,7 +341,6 @@ void printstatsw(WINDOW *win, char *name,
 		unsigned long cur, unsigned long avg,
 		unsigned long max, unsigned long long total,
 		bool siunits, int cols) {
-
 	char *str;
 	werase(win);
 
@@ -383,7 +381,6 @@ void usage(void) {
 }
 
 int main(int argc, char **argv) {
-	char *arg;
 	int key;
 	int colsold;
 	int graphlines;
@@ -409,8 +406,7 @@ int main(int argc, char **argv) {
 		delay = estrtod(EARGF(usage()));
 		break;
 	case 'i':
-		arg = EARGF(usage());
-		strlcpy(ifa.ifname, arg, IFNAMSIZ);
+		strlcpy(ifa.ifname, EARGF(usage()), IFNAMSIZ);
 		break;
 	default:
 		usage();
