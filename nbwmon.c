@@ -348,7 +348,7 @@ void printstatsw(WINDOW *win, char *name,
 
 	box(win, 0, 0);
 	if (name)
-		mvwprintw(win, 0, 1, "[ %s ]", name);
+		mvwprintw(win, 0, 1, "[ %s ]", name);
 
 	mvwprintw(win, 1, 1, "current:");
 	str = bytestostr(cur, siunits);
