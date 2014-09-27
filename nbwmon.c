@@ -1,6 +1,10 @@
 #define _GNU_SOURCE
 
 #ifdef __linux__
+#include <linux/version.h>
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,39)
+#include <sys/socket.h>
+#endif
 #include <linux/if_link.h>
 #elif __OpenBSD__ || __NetBSD__
 #include <sys/socket.h>
