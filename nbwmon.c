@@ -20,6 +20,7 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <string.h>
+#include <limits.h>
 #include <signal.h>
 #ifdef __NetBSD__
 #include <ncurses/ncurses.h>
@@ -143,19 +144,13 @@ unsigned long arraymax(unsigned long *array, size_t n) {
 
 unsigned long arraymin(unsigned long *array, size_t n) {
 	size_t i;
-	unsigned long max = 0;
-	unsigned long min = 0;
+	unsigned long min;
 
-	for (i = 0; i < n; i++)
-		if (array[i] > max)
-			max = array[i];
-
-	min = max;
+	min = ULONG_MAX;
 
 	for (i = 0; i < n; i++)
 		if (array[i] < min)
 			min = array[i];
-
 	return min;
 }
 
