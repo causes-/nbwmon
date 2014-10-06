@@ -43,6 +43,8 @@ struct iface {
 	unsigned long txavg;
 	unsigned long rxmax;
 	unsigned long txmax;
+	unsigned long rxmin;
+	unsigned long txmin;
 };
 
 char *argv0;
@@ -137,6 +139,24 @@ unsigned long arraymax(unsigned long *array, size_t n) {
 		if (array[i] > max)
 			max = array[i];
 	return max;
+}
+
+unsigned long arraymin(unsigned long *array, size_t n) {
+	size_t i;
+	unsigned long max = 0;
+	unsigned long min = 0;
+
+	for (i = 0; i < n; i++)
+		if (array[i] > max)
+			max = array[i];
+
+	min = max;
+
+	for (i = 0; i < n; i++)
+		if (array[i] < min)
+			min = array[i];
+
+	return min;
 }
 
 bool detectiface(char *ifname) {
@@ -266,6 +286,9 @@ bool getdata(struct iface *ifa, double delay, int cols) {
 
 		ifa->rxmax = arraymax(ifa->rxs, cols);
 		ifa->txmax = arraymax(ifa->txs, cols);
+
+		ifa->rxmin = arraymin(ifa->rxs, cols);
+		ifa->txmin = arraymin(ifa->txs, cols);
 	}
 
 	if (!getcounters(ifa->ifname, &rx, &tx))
@@ -314,7 +337,8 @@ char *bytestostr(double bytes, bool siunits) {
 }
 
 void printgraphw(WINDOW *win, char *name,
-		unsigned long *array, unsigned long max, bool siunits,
+		unsigned long *array, unsigned long max, unsigned long min,
+		bool siunits, bool minimum,
 		int lines, int cols, int color) {
 	int y, x;
 
@@ -325,14 +349,22 @@ void printgraphw(WINDOW *win, char *name,
 	if (name)
 		mvwprintw(win, 0, cols - 5 - strlen(name), "[ %s ]",name);
 	mvwprintw(win, 0, 1, "[ %s/s ]", bytestostr(max, siunits));
-	mvwprintw(win, lines-1, 1, "[ %s/s ]", bytestostr(0.0, siunits));
+	if (minimum)
+		mvwprintw(win, lines-1, 1, "[ %s/s ]", bytestostr(min, siunits));
+	else
+		mvwprintw(win, lines-1, 1, "[ %s/s ]", bytestostr(0, siunits));
 
 	wattron(win, color);
 	for (y = 0; y < (lines - 2); y++) {
 		for (x = 0; x < (cols - 3); x++) {
 			if (array[x] && max) {
-				if (lines - 3 - ((double) array[x] / max * lines) < y)
-					mvwaddch(win, y + 1, x + 2, '*');
+				if (minimum) {
+					if (lines - 3 - (((double) array[x] - min) / (max - min) * lines) < y)
+						mvwaddch(win, y + 1, x + 2, '*');
+				} else {
+					if (lines - 3 - ((double) array[x] / max * lines) < y)
+						mvwaddch(win, y + 1, x + 2, '*');
+				}
 			}
 		}
 	}
@@ -343,7 +375,7 @@ void printgraphw(WINDOW *win, char *name,
 
 void printstatsw(WINDOW *win, char *name,
 		unsigned long cur, unsigned long avg,
-		unsigned long max, unsigned long long total,
+		unsigned long max, unsigned long min, unsigned long long total,
 		bool siunits, int cols) {
 	char *str;
 	werase(win);
@@ -364,9 +396,13 @@ void printstatsw(WINDOW *win, char *name,
 	str = bytestostr(max, siunits);
 	mvwprintw(win, 3, cols - 3 - strlen(str), "%s/s", str);
 
-	mvwprintw(win, 4, 1, "total:");
+	mvwprintw(win, 4, 1, "minimum:");
+	str = bytestostr(min, siunits);
+	mvwprintw(win, 4, cols - 3 - strlen(str), "%s/s", str);
+
+	mvwprintw(win, 5, 1, "total:");
 	str = bytestostr(total, siunits);
-	mvwprintw(win, 4, cols - 1 - strlen(str), "%s", str);
+	mvwprintw(win, 5, cols - 1 - strlen(str), "%s", str);
 
 	wnoutrefresh(win);
 }
@@ -378,6 +414,7 @@ void usage(void) {
 			"-v    version\n"
 			"-C    no colors\n"
 			"-s    use SI units\n"
+			"-m    scale graph minimum\n"
 			"\n"
 			"-d <seconds>      redraw delay\n"
 			"-i <interface>    network interface\n"
@@ -393,6 +430,7 @@ int main(int argc, char **argv) {
 
 	bool colors = true;
 	bool siunits = false;
+	bool minimum = false;
 	double delay = 0.5;
 
 	memset(&ifa, 0, sizeof(ifa));
@@ -405,6 +443,9 @@ int main(int argc, char **argv) {
 		break;
 	case 's':
 		siunits = true;
+		break;
+	case 'm':
+		minimum = true;
 		break;
 	case 'd':
 		delay = estrtod(EARGF(usage()));
@@ -437,7 +478,7 @@ int main(int argc, char **argv) {
 	ifa.rxs = ecalloc(COLS - 3, sizeof(*ifa.rxs));
 	ifa.txs = ecalloc(COLS - 3, sizeof(*ifa.txs));
 
-	graphlines = (LINES - 7) / 2;
+	graphlines = (LINES - 8) / 2;
 
 	title = newwin(1, COLS, 0, 0);
 	rxgraph = newwin(graphlines, COLS, 1, 0);
@@ -463,7 +504,7 @@ int main(int argc, char **argv) {
 			arrayresize(&ifa.rxs, COLS - 3, colsold - 3);
 			arrayresize(&ifa.txs, COLS - 3, colsold - 3);
 
-			graphlines = (LINES - 7) / 2;
+			graphlines = (LINES - 8) / 2;
 
 			wresize(title, 1, COLS);
 			wresize(rxgraph, graphlines, COLS);
@@ -481,16 +522,18 @@ int main(int argc, char **argv) {
 		mvwprintw(title, 0, COLS / 2 - 8, "[ interface: %s ]", ifa.ifname);
 		wnoutrefresh(title);
 
-		printgraphw(rxgraph, "Received", ifa.rxs, ifa.rxmax, siunits,
+		printgraphw(rxgraph, "Received", ifa.rxs, ifa.rxmax, ifa.rxmin,
+				siunits, minimum,
 				graphlines, COLS, COLOR_PAIR(1));
-		printgraphw(txgraph, "Transmitted", ifa.txs, ifa.txmax, siunits,
+		printgraphw(txgraph, "Transmitted", ifa.txs, ifa.txmax, ifa.txmin,
+				siunits, minimum,
 				graphlines, COLS, COLOR_PAIR(2));
 
 		printstatsw(rxstats, "Received",
-				ifa.rxs[COLS - 4], ifa.rxavg, ifa.rxmax, ifa.rx,
+				ifa.rxs[COLS - 4], ifa.rxavg, ifa.rxmax, ifa.rxmin, ifa.rx,
 				siunits, COLS / 2);
 		printstatsw(txstats, "Transmitted",
-				ifa.txs[COLS - 4], ifa.txavg, ifa.txmax, ifa.tx,
+				ifa.txs[COLS - 4], ifa.txavg, ifa.txmax, ifa.txmin, ifa.tx,
 				siunits, COLS - COLS / 2);
 
 		doupdate();
