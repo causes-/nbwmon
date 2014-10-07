@@ -32,7 +32,7 @@
 
 #include "arg.h"
 
-#define VERSION "0.4.3"
+#define VERSION "0.5"
 
 struct iface {
 	char ifname[IFNAMSIZ];
@@ -336,6 +336,7 @@ void printgraphw(WINDOW *win, char *name,
 		bool siunits, bool minimum,
 		int lines, int cols, int color) {
 	int y, x;
+	double height;
 
 	werase(win);
 
@@ -353,13 +354,13 @@ void printgraphw(WINDOW *win, char *name,
 	for (y = 0; y < (lines - 2); y++) {
 		for (x = 0; x < (cols - 3); x++) {
 			if (array[x] && max) {
-				if (minimum) {
-					if (lines - 3 - (((double) array[x] - min) / (max - min) * lines) < y)
-						mvwaddch(win, y + 1, x + 2, '*');
-				} else {
-					if (lines - 3 - ((double) array[x] / max * lines) < y)
-						mvwaddch(win, y + 1, x + 2, '*');
-				}
+				if (minimum)
+					height = lines - 3 - (((double) array[x] - min) / (max - min) * lines);
+				else
+					height = lines - 3 - ((double) array[x] / max * lines);
+
+				if (height < y)
+					mvwaddch(win, y + 1, x + 2, '*');
 			}
 		}
 	}
@@ -383,12 +384,12 @@ void printstatsw(WINDOW *win, char *name,
 	str = bytestostr(cur, siunits);
 	mvwprintw(win, 1, cols - 3 - strlen(str), "%s/s", str);
 
-	mvwprintw(win, 2, 1, "average:");
-	str = bytestostr(avg, siunits);
+	mvwprintw(win, 2, 1, "maximum:");
+	str = bytestostr(max, siunits);
 	mvwprintw(win, 2, cols - 3 - strlen(str), "%s/s", str);
 
-	mvwprintw(win, 3, 1, "maximum:");
-	str = bytestostr(max, siunits);
+	mvwprintw(win, 3, 1, "average:");
+	str = bytestostr(avg, siunits);
 	mvwprintw(win, 3, cols - 3 - strlen(str), "%s/s", str);
 
 	mvwprintw(win, 4, 1, "minimum:");
