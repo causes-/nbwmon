@@ -40,10 +40,10 @@ struct iface {
 	unsigned long long tx;
 	unsigned long *rxs;
 	unsigned long *txs;
-	unsigned long rxavg;
-	unsigned long txavg;
 	unsigned long rxmax;
 	unsigned long txmax;
+	unsigned long rxavg;
+	unsigned long txavg;
 	unsigned long rxmin;
 	unsigned long txmin;
 };
@@ -276,11 +276,11 @@ bool getdata(struct iface *ifa, double delay, int cols) {
 		ifa->rxs[cols - 1] = (ifa->rx - rx) / delay;
 		ifa->txs[cols - 1] = (ifa->tx - tx) / delay;
 
-		ifa->rxavg = arrayavg(ifa->rxs, cols);
-		ifa->txavg = arrayavg(ifa->txs, cols);
-
 		ifa->rxmax = arraymax(ifa->rxs, cols);
 		ifa->txmax = arraymax(ifa->txs, cols);
+
+		ifa->rxavg = arrayavg(ifa->rxs, cols);
+		ifa->txavg = arrayavg(ifa->txs, cols);
 
 		ifa->rxmin = arraymin(ifa->rxs, cols);
 		ifa->txmin = arraymin(ifa->txs, cols);
@@ -332,7 +332,7 @@ char *bytestostr(double bytes, bool siunits) {
 }
 
 void printgraphw(WINDOW *win, char *name,
-		unsigned long *array, unsigned long max, unsigned long min,
+		unsigned long *array, unsigned long min, unsigned long max,
 		bool siunits, bool minimum,
 		int lines, int cols, int color) {
 	int y, x;
@@ -370,8 +370,8 @@ void printgraphw(WINDOW *win, char *name,
 }
 
 void printstatsw(WINDOW *win, char *name,
-		unsigned long cur, unsigned long avg,
-		unsigned long max, unsigned long min, unsigned long long total,
+		unsigned long cur, unsigned long min, unsigned long avg,
+		unsigned long max, unsigned long long total,
 		bool siunits, int cols) {
 	char *str;
 	werase(win);
@@ -518,18 +518,18 @@ int main(int argc, char **argv) {
 		mvwprintw(title, 0, COLS / 2 - 8, "[ interface: %s ]", ifa.ifname);
 		wnoutrefresh(title);
 
-		printgraphw(rxgraph, "Received", ifa.rxs, ifa.rxmax, ifa.rxmin,
+		printgraphw(rxgraph, "Received", ifa.rxs, ifa.rxmin, ifa.rxmax,
 				siunits, minimum,
 				graphlines, COLS, COLOR_PAIR(1));
-		printgraphw(txgraph, "Transmitted", ifa.txs, ifa.txmax, ifa.txmin,
+		printgraphw(txgraph, "Transmitted", ifa.txs, ifa.txmin, ifa.txmax,
 				siunits, minimum,
 				graphlines, COLS, COLOR_PAIR(2));
 
 		printstatsw(rxstats, "Received",
-				ifa.rxs[COLS - 4], ifa.rxavg, ifa.rxmax, ifa.rxmin, ifa.rx,
+				ifa.rxs[COLS - 4], ifa.rxmin, ifa.rxavg, ifa.rxmax, ifa.rx,
 				siunits, COLS / 2);
 		printstatsw(txstats, "Transmitted",
-				ifa.txs[COLS - 4], ifa.txavg, ifa.txmax, ifa.txmin, ifa.tx,
+				ifa.txs[COLS - 4], ifa.txmin, ifa.txavg, ifa.txmax, ifa.tx,
 				siunits, COLS - COLS / 2);
 
 		doupdate();
