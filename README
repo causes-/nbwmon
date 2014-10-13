@@ -20,6 +20,7 @@ usage: nbwmon [options]
 -v    version
 -C    no colors
 -s    use SI units
+-m    scale graph minimum
 
 -d <seconds>      redraw delay
 -i <interface>    network interface

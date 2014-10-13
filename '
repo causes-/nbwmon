@@ -67,24 +67,6 @@ void eprintf(const char *fmt, ...) {
 	exit(EXIT_FAILURE);
 }
 
-void *emalloc(size_t size) {
-	void *p;
-
-	p = malloc(size);
-	if (!p)
-		eprintf("out of memory\n");
-	return p;
-}
-
-void *ecalloc(size_t nmemb, size_t size) {
-	void *p;
-
-	p = calloc(nmemb, size);
-	if (!p)
-		eprintf("out of memory\n");
-	return p;
-}
-
 long estrtol(const char *str) {
 	char *ep;
 	long l;
@@ -120,6 +102,24 @@ size_t strlcpy(char *dest, const char *src, size_t size) {
 	}
 
 	return size;
+}
+
+void *emalloc(size_t size) {
+	void *p;
+
+	p = malloc(size);
+	if (!p)
+		eprintf("out of memory\n");
+	return p;
+}
+
+void *ecalloc(size_t nmemb, size_t size) {
+	void *p;
+
+	p = calloc(nmemb, size);
+	if (!p)
+		eprintf("out of memory\n");
+	return p;
 }
 
 unsigned long arrayavg(unsigned long *array, size_t n) {
@@ -270,8 +270,8 @@ bool getdata(struct iface *ifa, double delay, int cols) {
 		if (!getcounters(ifa->ifname, &ifa->rx, &ifa->tx))
 			return false;
 
-		memmove(ifa->rxs, ifa->rxs+1, sizeof(ifa->rxs) * (cols - 1));
-		memmove(ifa->txs, ifa->txs+1, sizeof(ifa->txs) * (cols - 1));
+		memmove(ifa->rxs, ifa->rxs+1, sizeof(long) * (cols - 1));
+		memmove(ifa->txs, ifa->txs+1, sizeof(long) * (cols - 1));
 
 		ifa->rxs[cols - 1] = (ifa->rx - rx) / delay;
 		ifa->txs[cols - 1] = (ifa->tx - tx) / delay;
@@ -298,12 +298,12 @@ size_t arrayresize(unsigned long **array, size_t newsize, size_t oldsize) {
 		return false;
 
 	arraytmp = *array;
-	*array = ecalloc(newsize, sizeof(**array));
+	*array = ecalloc(newsize, sizeof(long));
 
 	if (newsize > oldsize)
-		memcpy(*array+(newsize-oldsize), arraytmp, sizeof(**array) * oldsize);
+		memcpy(*array+(newsize-oldsize), arraytmp, sizeof(long) * oldsize);
 	else
-		memcpy(*array, arraytmp+(oldsize-newsize), sizeof(**array) * newsize);
+		memcpy(*array, arraytmp+(oldsize-newsize), sizeof(long) * newsize);
 
 	free(arraytmp);
 
@@ -355,9 +355,9 @@ void printgraphw(WINDOW *win, char *name,
 		for (x = 0; x < (cols - 3); x++) {
 			if (array[x] && max) {
 				if (minimum)
-					height = lines - 3 - (((double) array[x] - min) / (max - min) * lines);
+					height = lines - 2 - (((double) array[x] - min) / (max - min) * lines);
 				else
-					height = lines - 3 - ((double) array[x] / max * lines);
+					height = lines - 2 - ((double) array[x] / max * lines);
 
 				if (height < y)
 					mvwaddch(win, y + 1, x + 2, '*');
@@ -369,21 +369,11 @@ void printgraphw(WINDOW *win, char *name,
 	wnoutrefresh(win);
 }
 
-void printrightedgew(WINDOW *win, int line, int cols, const char *fmt, ...) {
-	va_list ap;
-	char buf[BUFSIZ];
-
-	va_start(ap, fmt);
-	vsnprintf(buf, BUFSIZ, fmt, ap);
-	va_end(ap);
-
-	mvwprintw(win, line, cols - strlen(buf), "%s", buf);
-}
-
 void printstatsw(WINDOW *win, char *name,
 		unsigned long cur, unsigned long min, unsigned long avg,
 		unsigned long max, unsigned long long total,
 		bool siunits, int cols) {
+	char *str;
 	werase(win);
 
 	box(win, 0, 0);
@@ -391,19 +381,24 @@ void printstatsw(WINDOW *win, char *name,
 		mvwprintw(win, 0, 1, "[ %s ]", name);
 
 	mvwprintw(win, 1, 1, "current:");
-	printrightedgew(win, 1, cols - 1, "%s/s", bytestostr(cur, siunits));
+	str = bytestostr(cur, siunits);
+	mvwprintw(win, 1, cols - 3 - strlen(str), "%s/s", str);
 
 	mvwprintw(win, 2, 1, "maximum:");
-	printrightedgew(win, 2, cols - 1, "%s/s", bytestostr(max, siunits));
+	str = bytestostr(max, siunits);
+	mvwprintw(win, 2, cols - 3 - strlen(str), "%s/s", str);
 
 	mvwprintw(win, 3, 1, "average:");
-	printrightedgew(win, 3, cols - 1, "%s/s", bytestostr(avg, siunits));
+	str = bytestostr(avg, siunits);
+	mvwprintw(win, 3, cols - 3 - strlen(str), "%s/s", str);
 
 	mvwprintw(win, 4, 1, "minimum:");
-	printrightedgew(win, 4, cols - 1, "%s/s", bytestostr(min, siunits));
+	str = bytestostr(min, siunits);
+	mvwprintw(win, 4, cols - 3 - strlen(str), "%s/s", str);
 
 	mvwprintw(win, 5, 1, "total:");
-	printrightedgew(win, 5, cols - 1, "%s", bytestostr(total, siunits));
+	str = bytestostr(total, siunits);
+	mvwprintw(win, 5, cols - 1 - strlen(str), "%s", str);
 
 	wnoutrefresh(win);
 }
