@@ -380,6 +380,17 @@ void printrightedgew(WINDOW *win, int line, int cols, const char *fmt, ...) {
 	mvwprintw(win, line, cols - strlen(buf), "%s", buf);
 }
 
+void printcenterw(WINDOW *win, int line, int cols, const char *fmt, ...) {
+	va_list ap;
+	char buf[BUFSIZ];
+
+	va_start(ap, fmt);
+	vsnprintf(buf, BUFSIZ, fmt, ap);
+	va_end(ap);
+
+	mvwprintw(win, line, cols / 2 - strlen(buf) / 2, "%s", buf);
+}
+
 void printstatsw(WINDOW *win, char *name,
 		unsigned long cur, unsigned long min, unsigned long avg,
 		unsigned long max, unsigned long long total,
@@ -438,7 +449,7 @@ int main(int argc, char **argv) {
 
 	ARGBEGIN {
 	case 'v':
-		eprintf("%s-%s\n", argv0, VERSION);
+		eprintf("nbwmon-%s\n", VERSION);
 	case 'C':
 		colors = false;
 		break;
@@ -520,7 +531,7 @@ int main(int argc, char **argv) {
 		}
 
 		werase(title);
-		mvwprintw(title, 0, COLS / 2 - 8, "[ interface: %s ]", ifa.ifname);
+		printcenterw(title, 0, COLS, "[ nbwmon-%s interface: %s ]", VERSION, ifa.ifname);
 		wnoutrefresh(title);
 
 		printgraphw(rxgraph, "Received", ifa.rxs, ifa.rxmin, ifa.rxmax,
