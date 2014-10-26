@@ -199,6 +199,8 @@ static bool getcounters(char *ifname, unsigned long long *rx, unsigned long long
 
 	for (ifa = ifas; ifa; ifa = ifa->ifa_next) {
 		if (!strcmp(ifa->ifa_name, ifname)) {
+			if (ifa->ifa_addr == NULL)
+				return false;
 			if (ifa->ifa_addr->sa_family == AF_PACKET && ifa->ifa_data != NULL) {
 				stats = ifa->ifa_data;
 				*rx = stats->rx_bytes;
