@@ -32,7 +32,7 @@
 
 #include "arg.h"
 
-#define VERSION "0.5"
+#define VERSION "0.5.1"
 
 struct iface {
 	char ifname[IFNAMSIZ];
