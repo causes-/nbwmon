@@ -52,6 +52,12 @@ char *argv0;
 
 static sig_atomic_t resize;
 
+bool colors = true;
+bool siunits = false;
+bool minimum = false;
+bool globalmax = false;
+double delay = 0.5;
+
 void sighandler(int sig) {
 	if (sig == SIGWINCH)
 		resize = 1;
@@ -265,7 +271,7 @@ static bool getcounters(char *ifname, unsigned long long *rx, unsigned long long
 }
 #endif
 
-bool getdata(struct iface *ifa, double delay, int cols, bool globalmax) {
+bool getdata(struct iface *ifa, int cols) {
 	static unsigned long long rx, tx;
 
 	if (rx && tx && !resize) {
@@ -281,8 +287,7 @@ bool getdata(struct iface *ifa, double delay, int cols, bool globalmax) {
 		if (globalmax) {
 			ifa->rxmax = arraymax(ifa->rxs, cols, ifa->rxmax);
 			ifa->txmax = arraymax(ifa->txs, cols, ifa->txmax);
-		}
-		else {
+		} else {
 			ifa->rxmax = arraymax(ifa->rxs, cols, 0);
 			ifa->txmax = arraymax(ifa->txs, cols, 0);
 		}
@@ -318,7 +323,7 @@ size_t arrayresize(unsigned long **array, size_t newsize, size_t oldsize) {
 	return newsize;
 }
 
-char *bytestostr(double bytes, bool siunits) {
+char *bytestostr(double bytes) {
 	int i;
 	static char str[32];
 	static const char iec[][4] = { "B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" };
@@ -341,7 +346,6 @@ char *bytestostr(double bytes, bool siunits) {
 
 void printgraphw(WINDOW *win, char *name,
 		unsigned long *array, unsigned long min, unsigned long max,
-		bool siunits, bool minimum,
 		int lines, int cols, int color) {
 	int y, x;
 	double height;
@@ -352,11 +356,11 @@ void printgraphw(WINDOW *win, char *name,
 	mvwvline(win, 0, 1, '-', lines-1);
 	if (name)
 		mvwprintw(win, 0, cols - 5 - strlen(name), "[ %s ]",name);
-	mvwprintw(win, 0, 1, "[ %s/s ]", bytestostr(max, siunits));
+	mvwprintw(win, 0, 1, "[ %s/s ]", bytestostr(max));
 	if (minimum)
-		mvwprintw(win, lines-1, 1, "[ %s/s ]", bytestostr(min, siunits));
+		mvwprintw(win, lines-1, 1, "[ %s/s ]", bytestostr(min));
 	else
-		mvwprintw(win, lines-1, 1, "[ %s/s ]", bytestostr(0, siunits));
+		mvwprintw(win, lines-1, 1, "[ %s/s ]", bytestostr(0));
 
 	wattron(win, color);
 	for (y = 0; y < (lines - 2); y++) {
@@ -402,7 +406,7 @@ void printcenterw(WINDOW *win, int line, int cols, const char *fmt, ...) {
 void printstatsw(WINDOW *win, char *name,
 		unsigned long cur, unsigned long min, unsigned long avg,
 		unsigned long max, unsigned long long total,
-		bool siunits, int cols) {
+		int cols) {
 	werase(win);
 
 	box(win, 0, 0);
@@ -410,19 +414,19 @@ void printstatsw(WINDOW *win, char *name,
 		mvwprintw(win, 0, 1, "[ %s ]", name);
 
 	mvwprintw(win, 1, 1, "current:");
-	printrightedgew(win, 1, cols - 1, "%s/s", bytestostr(cur, siunits));
+	printrightedgew(win, 1, cols - 1, "%s/s", bytestostr(cur));
 
 	mvwprintw(win, 2, 1, "maximum:");
-	printrightedgew(win, 2, cols - 1, "%s/s", bytestostr(max, siunits));
+	printrightedgew(win, 2, cols - 1, "%s/s", bytestostr(max));
 
 	mvwprintw(win, 3, 1, "average:");
-	printrightedgew(win, 3, cols - 1, "%s/s", bytestostr(avg, siunits));
+	printrightedgew(win, 3, cols - 1, "%s/s", bytestostr(avg));
 
 	mvwprintw(win, 4, 1, "minimum:");
-	printrightedgew(win, 4, cols - 1, "%s/s", bytestostr(min, siunits));
+	printrightedgew(win, 4, cols - 1, "%s/s", bytestostr(min));
 
 	mvwprintw(win, 5, 1, "total:");
-	printrightedgew(win, 5, cols - 1, "%s", bytestostr(total, siunits));
+	printrightedgew(win, 5, cols - 1, "%s", bytestostr(total));
 
 	wnoutrefresh(win);
 }
@@ -448,12 +452,6 @@ int main(int argc, char **argv) {
 	int graphlines;
 	struct iface ifa;
 	WINDOW *title, *rxgraph, *txgraph, *rxstats, *txstats;
-
-	bool colors = true;
-	bool siunits = false;
-	bool minimum = false;
-	bool globalmax = false;
-	double delay = 0.5;
 
 	memset(&ifa, 0, sizeof(ifa));
 
@@ -511,14 +509,14 @@ int main(int argc, char **argv) {
 	rxstats = newwin(LINES - (graphlines * 2 + 1), COLS / 2, graphlines * 2 + 1, 0);
 	txstats = newwin(LINES - (graphlines * 2 + 1), COLS - COLS / 2, graphlines * 2 + 1, COLS / 2);
 
-	if (!getdata(&ifa, delay, COLS - 3, globalmax))
+	if (!getdata(&ifa, COLS - 3))
 		eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
 
 	while ((key = getch()) != 'q') {
 		if (key != ERR)
 			resize = 1;
 
-		if (!getdata(&ifa, delay, COLS - 3, globalmax))
+		if (!getdata(&ifa, COLS - 3))
 			eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
 
 		if (resize) {
@@ -548,18 +546,16 @@ int main(int argc, char **argv) {
 		wnoutrefresh(title);
 
 		printgraphw(rxgraph, "Received", ifa.rxs, ifa.rxmin, ifa.rxmax,
-				siunits, minimum,
 				graphlines, COLS, COLOR_PAIR(1));
 		printgraphw(txgraph, "Transmitted", ifa.txs, ifa.txmin, ifa.txmax,
-				siunits, minimum,
 				graphlines, COLS, COLOR_PAIR(2));
 
 		printstatsw(rxstats, "Received",
 				ifa.rxs[COLS - 4], ifa.rxmin, ifa.rxavg, ifa.rxmax, ifa.rx,
-				siunits, COLS / 2);
+				COLS / 2);
 		printstatsw(txstats, "Transmitted",
 				ifa.txs[COLS - 4], ifa.txmin, ifa.txavg, ifa.txmax, ifa.tx,
-				siunits, COLS - COLS / 2);
+				COLS - COLS / 2);
 
 		doupdate();
 	}
