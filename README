@@ -21,6 +21,7 @@ usage: nbwmon [options]
 -C    no colors
 -s    use SI units
 -m    scale graph minimum
+-g    show global maximum
 
 -d <seconds>      redraw delay
 -i <interface>    network interface

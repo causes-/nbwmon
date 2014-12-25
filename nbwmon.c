@@ -132,9 +132,9 @@ unsigned long arrayavg(unsigned long *array, size_t n) {
 	return sum;
 }
 
-unsigned long arraymax(unsigned long *array, size_t n) {
+unsigned long arraymax(unsigned long *array, size_t n, unsigned long prevmax) {
 	size_t i;
-	unsigned long max = 0;
+	unsigned long max = prevmax;
 
 	for (i = 0; i < n; i++)
 		if (array[i] > max)
@@ -265,7 +265,7 @@ static bool getcounters(char *ifname, unsigned long long *rx, unsigned long long
 }
 #endif
 
-bool getdata(struct iface *ifa, double delay, int cols) {
+bool getdata(struct iface *ifa, double delay, int cols, bool globalmax) {
 	static unsigned long long rx, tx;
 
 	if (rx && tx && !resize) {
@@ -278,8 +278,14 @@ bool getdata(struct iface *ifa, double delay, int cols) {
 		ifa->rxs[cols - 1] = (ifa->rx - rx) / delay;
 		ifa->txs[cols - 1] = (ifa->tx - tx) / delay;
 
-		ifa->rxmax = arraymax(ifa->rxs, cols);
-		ifa->txmax = arraymax(ifa->txs, cols);
+		if (globalmax) {
+			ifa->rxmax = arraymax(ifa->rxs, cols, ifa->rxmax);
+			ifa->txmax = arraymax(ifa->txs, cols, ifa->txmax);
+		}
+		else {
+			ifa->rxmax = arraymax(ifa->rxs, cols, 0);
+			ifa->txmax = arraymax(ifa->txs, cols, 0);
+		}
 
 		ifa->rxavg = arrayavg(ifa->rxs, cols);
 		ifa->txavg = arrayavg(ifa->txs, cols);
@@ -429,6 +435,7 @@ void usage(void) {
 			"-C    no colors\n"
 			"-s    use SI units\n"
 			"-m    scale graph minimum\n"
+			"-g    show global maximum\n"
 			"\n"
 			"-d <seconds>      redraw delay\n"
 			"-i <interface>    network interface\n"
@@ -445,6 +452,7 @@ int main(int argc, char **argv) {
 	bool colors = true;
 	bool siunits = false;
 	bool minimum = false;
+	bool globalmax = false;
 	double delay = 0.5;
 
 	memset(&ifa, 0, sizeof(ifa));
@@ -460,6 +468,9 @@ int main(int argc, char **argv) {
 		break;
 	case 'm':
 		minimum = true;
+		break;
+	case 'g':
+		globalmax = true;
 		break;
 	case 'd':
 		delay = estrtod(EARGF(usage()));
@@ -500,14 +511,14 @@ int main(int argc, char **argv) {
 	rxstats = newwin(LINES - (graphlines * 2 + 1), COLS / 2, graphlines * 2 + 1, 0);
 	txstats = newwin(LINES - (graphlines * 2 + 1), COLS - COLS / 2, graphlines * 2 + 1, COLS / 2);
 
-	if (!getdata(&ifa, delay, COLS - 3))
+	if (!getdata(&ifa, delay, COLS - 3, globalmax))
 		eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
 
 	while ((key = getch()) != 'q') {
 		if (key != ERR)
 			resize = 1;
 
-		if (!getdata(&ifa, delay, COLS - 3))
+		if (!getdata(&ifa, delay, COLS - 3, globalmax))
 			eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
 
 		if (resize) {
