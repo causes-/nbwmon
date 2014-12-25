@@ -32,7 +32,7 @@
 
 #include "arg.h"
 
-#define VERSION "0.5.1"
+#define VERSION "0.5.2"
 
 struct iface {
 	char ifname[IFNAMSIZ];
@@ -138,9 +138,8 @@ unsigned long arrayavg(unsigned long *array, size_t n) {
 	return sum;
 }
 
-unsigned long arraymax(unsigned long *array, size_t n, unsigned long prevmax) {
+unsigned long arraymax(unsigned long *array, size_t n, unsigned long max) {
 	size_t i;
-	unsigned long max = prevmax;
 
 	for (i = 0; i < n; i++)
 		if (array[i] > max)
@@ -150,9 +149,7 @@ unsigned long arraymax(unsigned long *array, size_t n, unsigned long prevmax) {
 
 unsigned long arraymin(unsigned long *array, size_t n) {
 	size_t i;
-	unsigned long min;
-
-	min = ULONG_MAX;
+	unsigned long min = ULONG_MAX;
 
 	for (i = 0; i < n; i++)
 		if (array[i] < min)
@@ -196,9 +193,7 @@ bool detectiface(char *ifname) {
 #ifdef __linux__
 static bool getcounters(char *ifname, unsigned long long *rx, unsigned long long *tx) {
 	struct ifaddrs *ifas, *ifa;
-	struct rtnl_link_stats *stats;
-
-	stats = NULL;
+	struct rtnl_link_stats *stats = NULL;
 
 	if (getifaddrs(&ifas) == -1)
 		return false;
@@ -229,9 +224,7 @@ static bool getcounters(char *ifname, unsigned long long *rx, unsigned long long
 	char *buf, *next;
 	size_t size;
 	struct if_msghdr *ifm;
-	struct sockaddr_dl *sdl;
-
-	sdl = NULL;
+	struct sockaddr_dl *sdl = NULL;
 
 	mib[0] = CTL_NET;
 	mib[1] = PF_ROUTE;
@@ -344,9 +337,8 @@ char *bytestostr(double bytes) {
 	return str;
 }
 
-void printgraphw(WINDOW *win, char *name,
-		unsigned long *array, unsigned long min, unsigned long max,
-		int lines, int cols, int color) {
+void printgraphw(WINDOW *win, char *name, int lines, int cols, int color,
+		unsigned long *array, unsigned long min, unsigned long max) {
 	int y, x;
 	double height;
 
@@ -403,10 +395,9 @@ void printcenterw(WINDOW *win, int line, int cols, const char *fmt, ...) {
 	mvwprintw(win, line, cols / 2 - strlen(buf) / 2, "%s", buf);
 }
 
-void printstatsw(WINDOW *win, char *name,
+void printstatsw(WINDOW *win, char *name, int cols,
 		unsigned long cur, unsigned long min, unsigned long avg,
-		unsigned long max, unsigned long long total,
-		int cols) {
+		unsigned long max, unsigned long long total) {
 	werase(win);
 
 	box(win, 0, 0);
@@ -447,7 +438,7 @@ void usage(void) {
 }
 
 int main(int argc, char **argv) {
-	int key;
+	int key = ERR;
 	int colsold;
 	int graphlines;
 	struct iface ifa;
@@ -509,10 +500,7 @@ int main(int argc, char **argv) {
 	rxstats = newwin(LINES - (graphlines * 2 + 1), COLS / 2, graphlines * 2 + 1, 0);
 	txstats = newwin(LINES - (graphlines * 2 + 1), COLS - COLS / 2, graphlines * 2 + 1, COLS / 2);
 
-	if (!getdata(&ifa, COLS - 3))
-		eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
-
-	while ((key = getch()) != 'q') {
+	do {
 		if (key != ERR)
 			resize = 1;
 
@@ -542,23 +530,21 @@ int main(int argc, char **argv) {
 		}
 
 		werase(title);
-		printcenterw(title, 0, COLS, "[ nbwmon-%s interface: %s ]", VERSION, ifa.ifname);
+		printcenterw(title, 0, COLS, "[ nbwmon-%s | interface: %s ]", VERSION, ifa.ifname);
 		wnoutrefresh(title);
 
-		printgraphw(rxgraph, "Received", ifa.rxs, ifa.rxmin, ifa.rxmax,
-				graphlines, COLS, COLOR_PAIR(1));
-		printgraphw(txgraph, "Transmitted", ifa.txs, ifa.txmin, ifa.txmax,
-				graphlines, COLS, COLOR_PAIR(2));
+		printgraphw(rxgraph, "Received", graphlines, COLS, COLOR_PAIR(1),
+				ifa.rxs, ifa.rxmin, ifa.rxmax);
+		printgraphw(txgraph, "Transmitted", graphlines, COLS, COLOR_PAIR(2),
+				ifa.txs, ifa.txmin, ifa.txmax);
 
-		printstatsw(rxstats, "Received",
-				ifa.rxs[COLS - 4], ifa.rxmin, ifa.rxavg, ifa.rxmax, ifa.rx,
-				COLS / 2);
-		printstatsw(txstats, "Transmitted",
-				ifa.txs[COLS - 4], ifa.txmin, ifa.txavg, ifa.txmax, ifa.tx,
-				COLS - COLS / 2);
+		printstatsw(rxstats, "Received", COLS / 2,
+				ifa.rxs[COLS - 4], ifa.rxmin, ifa.rxavg, ifa.rxmax, ifa.rx);
+		printstatsw(txstats, "Transmitted", COLS - COLS / 2,
+				ifa.txs[COLS - 4], ifa.txmin, ifa.txavg, ifa.txmax, ifa.tx);
 
 		doupdate();
-	}
+	} while ((key = getch()) != 'q');
 
 	delwin(title);
 	delwin(rxgraph);
