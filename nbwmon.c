@@ -32,6 +32,8 @@
 
 #include "arg.h"
 
+#define LEN(x) (sizeof((x)) / sizeof(*(x)))
+
 #define VERSION "0.5.2"
 
 struct iface {
@@ -318,6 +320,7 @@ size_t arrayresize(unsigned long **array, size_t newsize, size_t oldsize) {
 
 char *bytestostr(double bytes) {
 	int i;
+	int cols;
 	static char str[32];
 	static const char iec[][4] = { "B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" };
 	static const char si[][3] = { "B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
@@ -325,9 +328,15 @@ char *bytestostr(double bytes) {
 	char *fmt;
 	double prefix;
 
-	prefix = siunits ? 1000.0 : 1024.0;
+	if (siunits) {
+		prefix = 1000.0;
+		cols = LEN(si);
+	} else {
+		prefix = 1024.0;
+		cols = LEN(iec);
+	}
 
-	for (i = 0; bytes >= prefix && i < 9; i++)
+	for (i = 0; bytes >= prefix && i < cols; i++)
 		bytes /= prefix;
 
 	fmt = i ? "%.2f %s" : "%.0f %s";
