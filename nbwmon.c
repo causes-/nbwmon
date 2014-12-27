@@ -51,7 +51,6 @@ struct iface {
 };
 
 char *argv0;
-
 static sig_atomic_t resize;
 
 bool colors = true;
@@ -93,16 +92,6 @@ void *ecalloc(size_t nmemb, size_t size) {
 	return p;
 }
 
-long estrtol(const char *str) {
-	char *ep;
-	long l;
-
-	l = strtol(str, &ep, 10);
-	if (!l || *ep != '\0' || ep == str)
-		eprintf("invalid number: %s\n", str);
-	return l;
-}
-
 double estrtod(const char *str) {
 	char *ep;
 	double d;
@@ -130,16 +119,6 @@ size_t strlcpy(char *dest, const char *src, size_t size) {
 	return size;
 }
 
-unsigned long arrayavg(unsigned long *array, size_t n) {
-	size_t i;
-	unsigned long sum = 0;
-
-	for (i = 0; i < n; i++)
-		sum += array[i];
-	sum /= n;
-	return sum;
-}
-
 unsigned long arraymax(unsigned long *array, size_t n, unsigned long max) {
 	size_t i;
 
@@ -157,6 +136,85 @@ unsigned long arraymin(unsigned long *array, size_t n) {
 		if (array[i] < min)
 			min = array[i];
 	return min;
+}
+
+unsigned long arrayavg(unsigned long *array, size_t n) {
+	size_t i;
+	unsigned long sum = 0;
+
+	for (i = 0; i < n; i++)
+		sum += array[i];
+	sum /= n;
+	return sum;
+}
+
+size_t arrayresize(unsigned long **array, size_t newsize, size_t oldsize) {
+	unsigned long *arraytmp;
+
+	if (newsize == oldsize)
+		return false;
+
+	arraytmp = *array;
+	*array = ecalloc(newsize, sizeof(**array));
+
+	if (newsize > oldsize)
+		memcpy(*array+(newsize-oldsize), arraytmp, sizeof(**array) * oldsize);
+	else
+		memcpy(*array, arraytmp+(oldsize-newsize), sizeof(**array) * newsize);
+
+	free(arraytmp);
+
+	return newsize;
+}
+
+char *bytestostr(double bytes) {
+	int i;
+	int cols;
+	static char str[32];
+	static const char iec[][4] = { "B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" };
+	static const char si[][3] = { "B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
+	const char *unit;
+	char *fmt;
+	double prefix;
+
+	if (siunits) {
+		prefix = 1000.0;
+		cols = LEN(si);
+	} else {
+		prefix = 1024.0;
+		cols = LEN(iec);
+	}
+
+	for (i = 0; bytes >= prefix && i < cols; i++)
+		bytes /= prefix;
+
+	fmt = i ? "%.2f %s" : "%.0f %s";
+	unit = siunits ? si[i] : iec[i];
+	snprintf(str, sizeof(str), fmt, bytes, unit);
+
+	return str;
+}
+
+void printrightedgew(WINDOW *win, int line, int cols, const char *fmt, ...) {
+	va_list ap;
+	char buf[BUFSIZ];
+
+	va_start(ap, fmt);
+	vsnprintf(buf, BUFSIZ, fmt, ap);
+	va_end(ap);
+
+	mvwprintw(win, line, cols - strlen(buf), "%s", buf);
+}
+
+void printcenterw(WINDOW *win, int line, int cols, const char *fmt, ...) {
+	va_list ap;
+	char buf[BUFSIZ];
+
+	va_start(ap, fmt);
+	vsnprintf(buf, BUFSIZ, fmt, ap);
+	va_end(ap);
+
+	mvwprintw(win, line, cols / 2 - strlen(buf) / 2, "%s", buf);
 }
 
 bool detectiface(char *ifname) {
@@ -299,53 +357,6 @@ bool getdata(struct iface *ifa, int cols) {
 	return true;
 }
 
-size_t arrayresize(unsigned long **array, size_t newsize, size_t oldsize) {
-	unsigned long *arraytmp;
-
-	if (newsize == oldsize)
-		return false;
-
-	arraytmp = *array;
-	*array = ecalloc(newsize, sizeof(**array));
-
-	if (newsize > oldsize)
-		memcpy(*array+(newsize-oldsize), arraytmp, sizeof(**array) * oldsize);
-	else
-		memcpy(*array, arraytmp+(oldsize-newsize), sizeof(**array) * newsize);
-
-	free(arraytmp);
-
-	return newsize;
-}
-
-char *bytestostr(double bytes) {
-	int i;
-	int cols;
-	static char str[32];
-	static const char iec[][4] = { "B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" };
-	static const char si[][3] = { "B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
-	const char *unit;
-	char *fmt;
-	double prefix;
-
-	if (siunits) {
-		prefix = 1000.0;
-		cols = LEN(si);
-	} else {
-		prefix = 1024.0;
-		cols = LEN(iec);
-	}
-
-	for (i = 0; bytes >= prefix && i < cols; i++)
-		bytes /= prefix;
-
-	fmt = i ? "%.2f %s" : "%.0f %s";
-	unit = siunits ? si[i] : iec[i];
-	snprintf(str, sizeof(str), fmt, bytes, unit);
-
-	return str;
-}
-
 void printgraphw(WINDOW *win, char *name, int lines, int cols, int color,
 		unsigned long *array, unsigned long min, unsigned long max) {
 	int y, x;
@@ -380,28 +391,6 @@ void printgraphw(WINDOW *win, char *name, int lines, int cols, int color,
 	wattroff(win, color);
 
 	wnoutrefresh(win);
-}
-
-void printrightedgew(WINDOW *win, int line, int cols, const char *fmt, ...) {
-	va_list ap;
-	char buf[BUFSIZ];
-
-	va_start(ap, fmt);
-	vsnprintf(buf, BUFSIZ, fmt, ap);
-	va_end(ap);
-
-	mvwprintw(win, line, cols - strlen(buf), "%s", buf);
-}
-
-void printcenterw(WINDOW *win, int line, int cols, const char *fmt, ...) {
-	va_list ap;
-	char buf[BUFSIZ];
-
-	va_start(ap, fmt);
-	vsnprintf(buf, BUFSIZ, fmt, ap);
-	va_end(ap);
-
-	mvwprintw(win, line, cols / 2 - strlen(buf) / 2, "%s", buf);
 }
 
 void printstatsw(WINDOW *win, char *name, int cols,

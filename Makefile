@@ -3,7 +3,7 @@
 # below.
 CFLAGS+=-std=c99 -pedantic -Wall -Wextra
 LDLIBS=-lncurses
-PREFIX = /usr/local
+PREFIX=/usr/local
 
 BIN=nbwmon
 
