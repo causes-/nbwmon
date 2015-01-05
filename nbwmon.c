@@ -12,7 +12,7 @@
 #include <net/if_dl.h>
 #include <net/route.h>
 #else
-#error "your platform is not supported"
+#error "Your platform is not supported"
 #endif
 
 #include <stdlib.h>
@@ -79,7 +79,7 @@ void *emalloc(size_t size) {
 
 	p = malloc(size);
 	if (!p)
-		eprintf("out of memory\n");
+		eprintf("Out of memory\n");
 	return p;
 }
 
@@ -88,7 +88,7 @@ void *ecalloc(size_t nmemb, size_t size) {
 
 	p = calloc(nmemb, size);
 	if (!p)
-		eprintf("out of memory\n");
+		eprintf("Out of memory\n");
 	return p;
 }
 
@@ -98,7 +98,7 @@ double estrtod(const char *str) {
 
 	d = strtod(str, &ep);
 	if (!d || *ep != '\0' || ep == str)
-		eprintf("invalid number: %s\n", str);
+		eprintf("Invalid number: %s\n", str);
 	return d;
 }
 
@@ -402,19 +402,19 @@ void printstatsw(WINDOW *win, char *name, int cols,
 	if (name)
 		mvwprintw(win, 0, 1, "[ %s ]", name);
 
-	mvwprintw(win, 1, 1, "current:");
+	mvwprintw(win, 1, 1, "Current:");
 	printrightedgew(win, 1, cols - 1, "%s/s", bytestostr(cur));
 
-	mvwprintw(win, 2, 1, "maximum:");
+	mvwprintw(win, 2, 1, "Maximum:");
 	printrightedgew(win, 2, cols - 1, "%s/s", bytestostr(max));
 
-	mvwprintw(win, 3, 1, "average:");
+	mvwprintw(win, 3, 1, "Average:");
 	printrightedgew(win, 3, cols - 1, "%s/s", bytestostr(avg));
 
-	mvwprintw(win, 4, 1, "minimum:");
+	mvwprintw(win, 4, 1, "Minimum:");
 	printrightedgew(win, 4, cols - 1, "%s/s", bytestostr(min));
 
-	mvwprintw(win, 5, 1, "total:");
+	mvwprintw(win, 5, 1, "Total:");
 	printrightedgew(win, 5, cols - 1, "%s", bytestostr(total));
 
 	wnoutrefresh(win);
@@ -423,15 +423,15 @@ void printstatsw(WINDOW *win, char *name, int cols,
 void usage(void) {
 	eprintf("usage: %s [options]\n"
 			"\n"
-			"-h    help\n"
-			"-v    version\n"
-			"-C    no colors\n"
-			"-s    use SI units\n"
-			"-m    scale graph minimum\n"
-			"-g    show global maximum\n"
+			"-h    Help\n"
+			"-v    Version\n"
+			"-C    No colors\n"
+			"-s    Use SI units\n"
+			"-m    Scale graph minimum\n"
+			"-g    Show global maximum\n"
 			"\n"
-			"-d <seconds>      redraw delay\n"
-			"-i <interface>    network interface\n"
+			"-d <seconds>      Redraw delay\n"
+			"-i <interface>    Network interface\n"
 			, argv0);
 }
 
@@ -470,7 +470,7 @@ int main(int argc, char **argv) {
 	} ARGEND;
 
 	if (!detectiface(ifa.ifname))
-		eprintf("can't find network interface\n");
+		eprintf("Can't find network interface\n");
 
 	initscr();
 	curs_set(0);
@@ -485,7 +485,7 @@ int main(int argc, char **argv) {
 	}
 
 	signal(SIGWINCH, sighandler);
-	mvprintw(0, 0, "collecting data from %s for %.2f seconds\n", ifa.ifname, delay);
+	mvprintw(0, 0, "Collecting data from %s for %.2f seconds\n", ifa.ifname, delay);
 
 	ifa.rxs = ecalloc(COLS - 3, sizeof(*ifa.rxs));
 	ifa.txs = ecalloc(COLS - 3, sizeof(*ifa.txs));
@@ -503,7 +503,21 @@ int main(int argc, char **argv) {
 			resize = 1;
 
 		if (!getdata(&ifa, COLS - 3))
-			eprintf("can't read rx and tx bytes for %s\n", ifa.ifname);
+			eprintf("Can't read rx and tx bytes for %s\n", ifa.ifname);
+
+		if (COLS < 46 || LINES < 18) {
+			if (resize) {
+				endwin();
+				erase();
+				refresh();
+				resize = 0;
+			}
+			werase(title);
+			wprintw(title, "Terminal size too small (Minimum: 46x18)");
+			wnoutrefresh(title);
+			doupdate();
+			continue;
+		}
 
 		if (resize) {
 			colsold = COLS;
@@ -528,7 +542,7 @@ int main(int argc, char **argv) {
 		}
 
 		werase(title);
-		printcenterw(title, 0, COLS, "[ nbwmon-%s | interface: %s ]", VERSION, ifa.ifname);
+		printcenterw(title, 0, COLS, "[ nbwmon-%s | Interface: %s ]", VERSION, ifa.ifname);
 		wnoutrefresh(title);
 
 		printgraphw(rxgraph, "Received", graphlines, COLS, COLOR_PAIR(1),
