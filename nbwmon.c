@@ -195,26 +195,32 @@ char *bytestostr(double bytes) {
 	return str;
 }
 
-void printrightedgew(WINDOW *win, int line, int cols, const char *fmt, ...) {
+void printrightedgew(WINDOW *win, const char *fmt, ...) {
 	va_list ap;
 	char buf[BUFSIZ];
+	int y, x, ymax, xmax;
 
 	va_start(ap, fmt);
 	vsnprintf(buf, BUFSIZ, fmt, ap);
 	va_end(ap);
 
-	mvwprintw(win, line, cols - strlen(buf), "%s", buf);
+	getyx(win, y, x);
+	getmaxyx(win, ymax, xmax);
+	mvwprintw(win, y, xmax - 1 - strlen(buf), "%s", buf);
 }
 
-void printcenterw(WINDOW *win, int line, int cols, const char *fmt, ...) {
+void printcenterw(WINDOW *win, const char *fmt, ...) {
 	va_list ap;
 	char buf[BUFSIZ];
+	int y, x, ymax, xmax;
 
 	va_start(ap, fmt);
 	vsnprintf(buf, BUFSIZ, fmt, ap);
 	va_end(ap);
 
-	mvwprintw(win, line, cols / 2 - strlen(buf) / 2, "%s", buf);
+	getyx(win, y, x);
+	getmaxyx(win, ymax, xmax);
+	mvwprintw(win, y, (xmax - strlen(buf)) / 2, "%s", buf);
 }
 
 bool detectiface(char *ifname) {
@@ -393,7 +399,7 @@ void printgraphw(WINDOW *win, char *name, int lines, int cols, int color,
 	wnoutrefresh(win);
 }
 
-void printstatsw(WINDOW *win, char *name, int cols,
+void printstatsw(WINDOW *win, char *name,
 		unsigned long cur, unsigned long min, unsigned long avg,
 		unsigned long max, unsigned long long total) {
 	werase(win);
@@ -403,19 +409,19 @@ void printstatsw(WINDOW *win, char *name, int cols,
 		mvwprintw(win, 0, 1, "[ %s ]", name);
 
 	mvwprintw(win, 1, 1, "Current:");
-	printrightedgew(win, 1, cols - 1, "%s/s", bytestostr(cur));
+	printrightedgew(win, "%s/s", bytestostr(cur));
 
 	mvwprintw(win, 2, 1, "Maximum:");
-	printrightedgew(win, 2, cols - 1, "%s/s", bytestostr(max));
+	printrightedgew(win, "%s/s", bytestostr(max));
 
 	mvwprintw(win, 3, 1, "Average:");
-	printrightedgew(win, 3, cols - 1, "%s/s", bytestostr(avg));
+	printrightedgew(win, "%s/s", bytestostr(avg));
 
 	mvwprintw(win, 4, 1, "Minimum:");
-	printrightedgew(win, 4, cols - 1, "%s/s", bytestostr(min));
+	printrightedgew(win, "%s/s", bytestostr(min));
 
 	mvwprintw(win, 5, 1, "Total:");
-	printrightedgew(win, 5, cols - 1, "%s", bytestostr(total));
+	printrightedgew(win, "%s", bytestostr(total));
 
 	wnoutrefresh(win);
 }
@@ -542,7 +548,7 @@ int main(int argc, char **argv) {
 		}
 
 		werase(title);
-		printcenterw(title, 0, COLS, "[ nbwmon-%s | Interface: %s ]", VERSION, ifa.ifname);
+		printcenterw(title, "[ nbwmon-%s | Interface: %s ]", VERSION, ifa.ifname);
 		wnoutrefresh(title);
 
 		printgraphw(rxgraph, "Received", graphlines, COLS, COLOR_PAIR(1),
@@ -550,9 +556,9 @@ int main(int argc, char **argv) {
 		printgraphw(txgraph, "Transmitted", graphlines, COLS, COLOR_PAIR(2),
 				ifa.txs, ifa.txmin, ifa.txmax);
 
-		printstatsw(rxstats, "Received", COLS / 2,
+		printstatsw(rxstats, "Received",
 				ifa.rxs[COLS - 4], ifa.rxmin, ifa.rxavg, ifa.rxmax, ifa.rx);
-		printstatsw(txstats, "Transmitted", COLS - COLS / 2,
+		printstatsw(txstats, "Transmitted",
 				ifa.txs[COLS - 4], ifa.txmin, ifa.txavg, ifa.txmax, ifa.tx);
 
 		doupdate();
