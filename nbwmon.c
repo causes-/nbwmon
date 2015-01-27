@@ -198,29 +198,23 @@ char *bytestostr(double bytes) {
 void printrightedgew(WINDOW *win, const char *fmt, ...) {
 	va_list ap;
 	char buf[BUFSIZ];
-	int y, x, ymax, xmax;
 
 	va_start(ap, fmt);
 	vsnprintf(buf, BUFSIZ, fmt, ap);
 	va_end(ap);
 
-	getyx(win, y, x);
-	getmaxyx(win, ymax, xmax);
-	mvwprintw(win, y, xmax - 1 - strlen(buf), "%s", buf);
+	mvwprintw(win, getcury(win), getmaxx(win) - 1 - strlen(buf), "%s", buf);
 }
 
 void printcenterw(WINDOW *win, const char *fmt, ...) {
 	va_list ap;
 	char buf[BUFSIZ];
-	int y, x, ymax, xmax;
 
 	va_start(ap, fmt);
 	vsnprintf(buf, BUFSIZ, fmt, ap);
 	va_end(ap);
 
-	getyx(win, y, x);
-	getmaxyx(win, ymax, xmax);
-	mvwprintw(win, y, (xmax - strlen(buf)) / 2, "%s", buf);
+	mvwprintw(win, getcury(win), (getmaxx(win) - strlen(buf)) / 2, "%s", buf);
 }
 
 bool detectiface(char *ifname) {
