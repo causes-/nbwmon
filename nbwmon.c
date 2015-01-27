@@ -95,8 +95,8 @@ unsigned long arrayavg(unsigned long *array, size_t n) {
 size_t arrayresize(unsigned long **array, size_t newsize, size_t oldsize) {
 	unsigned long *arraytmp;
 
-	if (newsize == oldsize)
-		return false;
+	if (newsize == oldsize || !newsize || !oldsize)
+		return -1;
 
 	arraytmp = *array;
 	*array = ecalloc(newsize, sizeof(**array));
@@ -114,7 +114,7 @@ size_t arrayresize(unsigned long **array, size_t newsize, size_t oldsize) {
 char *bytestostr(double bytes) {
 	int i;
 	int cols;
-	static char str[32];
+	static char buf[32];
 	static const char iec[][4] = { "B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" };
 	static const char si[][3] = { "B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
 	const char *unit;
@@ -134,9 +134,9 @@ char *bytestostr(double bytes) {
 
 	fmt = i ? "%.2f %s" : "%.0f %s";
 	unit = siunits ? si[i] : iec[i];
-	snprintf(str, sizeof(str), fmt, bytes, unit);
+	snprintf(buf, sizeof(buf), fmt, bytes, unit);
 
-	return str;
+	return buf;
 }
 
 void printrightedgew(WINDOW *win, const char *fmt, ...) {
@@ -464,25 +464,24 @@ int main(int argc, char **argv) {
 		}
 
 		if (resize) {
+			graphlines = (LINES - 8) / 2;
 			colsold = COLS;
 			endwin();
 			refresh();
+			resize = 0;
 
 			arrayresize(&ifa.rxs, COLS - 3, colsold - 3);
 			arrayresize(&ifa.txs, COLS - 3, colsold - 3);
-
-			graphlines = (LINES - 8) / 2;
 
 			wresize(title, 1, COLS);
 			wresize(rxgraph, graphlines, COLS);
 			wresize(txgraph, graphlines, COLS);
 			wresize(rxstats, LINES - (graphlines * 2 + 1), COLS / 2);
 			wresize(txstats, LINES - (graphlines * 2 + 1), COLS - COLS / 2);
+			mvwin(rxgraph, 1, 0);
 			mvwin(txgraph, graphlines + 1, 0);
 			mvwin(rxstats, graphlines * 2 + 1, 0);
 			mvwin(txstats, graphlines * 2 + 1, COLS / 2);
-
-			resize = 0;
 		}
 
 		werase(title);
