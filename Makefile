@@ -6,8 +6,14 @@ LDLIBS=-lncurses
 PREFIX=/usr/local
 
 BIN=nbwmon
+OBJ=nbwmon.o util.o
+
+$(BIN): $(OBJ)
 
 all: $(BIN)
+
+clean:
+	rm -f $(BIN) $(OBJ)
 
 install: all
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
@@ -15,6 +21,3 @@ install: all
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/$(BIN)
-
-clean:
-	rm -f $(BIN)
