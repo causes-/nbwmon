@@ -104,12 +104,6 @@ size_t arrayresize(unsigned long **array, size_t newsize, size_t oldsize) {
 	return newsize;
 }
 
-unsigned long decisectime() {
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	return tv.tv_sec * 10 + tv.tv_usec / 100000;
-}
-
 char *bytestostr(double bytes) {
 	int i;
 	int cols;
@@ -344,23 +338,18 @@ void printstatsw(WINDOW *win, char *name,
 		unsigned long cur, unsigned long min, unsigned long avg,
 		unsigned long max, unsigned long long total) {
 	werase(win);
-
 	box(win, 0, 0);
 	if (name)
 		mvwprintw(win, 0, 1, "[ %s ]", name);
 
 	mvwprintw(win, 1, 1, "Current:");
 	printrightedgew(win, "%s/s", bytestostr(cur));
-
 	mvwprintw(win, 2, 1, "Maximum:");
 	printrightedgew(win, "%s/s", bytestostr(max));
-
 	mvwprintw(win, 3, 1, "Average:");
 	printrightedgew(win, "%s/s", bytestostr(avg));
-
 	mvwprintw(win, 4, 1, "Minimum:");
 	printrightedgew(win, "%s/s", bytestostr(min));
-
 	mvwprintw(win, 5, 1, "Total:");
 	printrightedgew(win, "%s", bytestostr(total));
 
@@ -387,7 +376,9 @@ int main(int argc, char **argv) {
 	int oldy, oldx;
 	int graphy;
 	int key = ERR;
-	unsigned long timer = 0;
+	long timer = 0;
+	bool resize;
+	struct timeval tv;
 	struct iface ifa;
 	WINDOW *rxgraph, *txgraph, *rxstats, *txstats;
 
@@ -422,8 +413,11 @@ int main(int argc, char **argv) {
 		eprintf("Can't find network interface\n");
 
 	initscr();
-	curs_set(0);
-	timeout(100);
+	curs_set(FALSE);
+	timeout(10);
+	cbreak();
+	noecho();
+	keypad(stdscr, TRUE);
 	if (colors && has_colors()) {
 		start_color();
 		use_default_colors();
@@ -444,6 +438,7 @@ int main(int argc, char **argv) {
 	txstats = newwin(y - (graphy * 2), x - x / 2, graphy * 2, x / 2);
 
 	while (key != 'q') {
+		resize = false;
 		if (y < 7 || x < 44) {
 			werase(stdscr);
 			addstr("terminal too small");
@@ -454,6 +449,7 @@ int main(int argc, char **argv) {
 		}
 
 		if (oldy != y || oldx != x) {
+			resize = true;
 			graphy = (y - 7) / 2;
 			if (graphy < 5) {
 				wresize(rxstats, y, x / 2);
@@ -477,17 +473,26 @@ int main(int argc, char **argv) {
 			}
 		}
 
-		if (!timer || decisectime() - timer >= delay * 10) {
-			timer = decisectime();
+		gettimeofday(&tv, NULL);
+		tv.tv_usec = (1000 * (tv.tv_sec % 1000) + (tv.tv_usec / 1000)) / (delay * 1000);
+		if (!timer || timer != tv.tv_usec) {
+			resize = true;
+			timer = tv.tv_usec;
 			if (!getdata(&ifa, x - 3))
 				eprintf("Can't read rx and tx bytes for %s\n", ifa.ifname);
 		}
 
-		printgraphw(rxgraph, "Received", ifa.ifname, COLOR_PAIR(1), ifa.rxs, ifa.rxmin, ifa.rxmax);
-		printgraphw(txgraph, "Transmitted", NULL, COLOR_PAIR(2), ifa.txs, ifa.txmin, ifa.txmax);
-		printstatsw(rxstats, "Received", ifa.rxs[x - 4], ifa.rxmin, ifa.rxavg, ifa.rxmax, ifa.rx);
-		printstatsw(txstats, "Transmitted", ifa.txs[x - 4], ifa.txmin, ifa.txavg, ifa.txmax, ifa.tx);
-		doupdate();
+		if (resize || key == KEY_RESIZE || key == 'r') {
+			printgraphw(rxgraph, "Received", ifa.ifname, COLOR_PAIR(1),
+					ifa.rxs, ifa.rxmin, ifa.rxmax);
+			printgraphw(txgraph, "Transmitted", NULL, COLOR_PAIR(2),
+					ifa.txs, ifa.txmin, ifa.txmax);
+			printstatsw(rxstats, "Received",
+					ifa.rxs[x - 4], ifa.rxmin, ifa.rxavg, ifa.rxmax, ifa.rx);
+			printstatsw(txstats, "Transmitted",
+					ifa.txs[x - 4], ifa.txmin, ifa.txavg, ifa.txmax, ifa.tx);
+			doupdate();
+		}
 
 		oldy = y;
 		oldx = x;
