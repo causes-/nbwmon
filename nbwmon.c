@@ -21,7 +21,6 @@
 #include <stdarg.h>
 #include <string.h>
 #include <limits.h>
-#include <signal.h>
 #ifdef __NetBSD__
 #include <ncurses/ncurses.h>
 #else
@@ -50,18 +49,12 @@ struct iface {
 };
 
 char *argv0;
-static sig_atomic_t resize;
 
 bool colors = true;
 bool siunits = false;
 bool minimum = false;
 bool globalmax = false;
 double delay = 0.5;
-
-void sighandler(int sig) {
-	if (sig == SIGWINCH)
-		resize = 1;
-}
 
 unsigned long arraymax(unsigned long *array, size_t n, unsigned long max) {
 	size_t i;
@@ -271,7 +264,7 @@ static bool getcounters(char *ifname, unsigned long long *rx, unsigned long long
 bool getdata(struct iface *ifa, int cols) {
 	static unsigned long long rx, tx;
 
-	if (rx && tx && !resize) {
+	if (rx && tx) {
 		if (!getcounters(ifa->ifname, &ifa->rx, &ifa->tx))
 			return false;
 
@@ -380,11 +373,13 @@ void usage(void) {
 }
 
 int main(int argc, char **argv) {
+	int y, x;
+	int oldy, oldx;
+	int graphy;
 	int key = ERR;
-	int colsold;
-	int graphlines;
+	int timer = delay * 10;
 	struct iface ifa;
-	WINDOW *title, *rxgraph, *txgraph, *rxstats, *txstats;
+	WINDOW *rxgraph, *txgraph, *rxstats, *txstats;
 
 	memset(&ifa, 0, sizeof(ifa));
 
@@ -418,96 +413,91 @@ int main(int argc, char **argv) {
 
 	initscr();
 	curs_set(0);
-	noecho();
-	keypad(stdscr, TRUE);
-	timeout(delay * 1000);
+	timeout(100);
 	if (colors && has_colors()) {
 		start_color();
 		use_default_colors();
 		init_pair(1, COLOR_GREEN, -1);
 		init_pair(2, COLOR_RED, -1);
 	}
+	getmaxyx(stdscr, y, x);
+	oldy = y;
+	oldx = x;
 
-	signal(SIGWINCH, sighandler);
-	mvprintw(0, 0, "Collecting data from %s for %.2f seconds\n", ifa.ifname, delay);
+	ifa.rxs = ecalloc(x - 3, sizeof(*ifa.rxs));
+	ifa.txs = ecalloc(x - 3, sizeof(*ifa.txs));
 
-	ifa.rxs = ecalloc(COLS - 3, sizeof(*ifa.rxs));
-	ifa.txs = ecalloc(COLS - 3, sizeof(*ifa.txs));
+	graphy = (y - 8) / 2;
+	rxgraph = newwin(graphy, x, 1, 0);
+	txgraph = newwin(graphy, x, graphy + 1, 0);
+	rxstats = newwin(y - (graphy * 2 + 1), x / 2, graphy * 2 + 1, 0);
+	txstats = newwin(y - (graphy * 2 + 1), x - x / 2, graphy * 2 + 1, x / 2);
 
-	graphlines = (LINES - 8) / 2;
-
-	title = newwin(1, COLS, 0, 0);
-	rxgraph = newwin(graphlines, COLS, 1, 0);
-	txgraph = newwin(graphlines, COLS, graphlines + 1, 0);
-	rxstats = newwin(LINES - (graphlines * 2 + 1), COLS / 2, graphlines * 2 + 1, 0);
-	txstats = newwin(LINES - (graphlines * 2 + 1), COLS - COLS / 2, graphlines * 2 + 1, COLS / 2);
-
-	do {
-		if (key != ERR)
-			resize = 1;
-
-		if (!getdata(&ifa, COLS - 3))
-			eprintf("Can't read rx and tx bytes for %s\n", ifa.ifname);
-
-		if (COLS < 46 || LINES < 18) {
-			if (resize) {
-				endwin();
-				erase();
-				refresh();
-				resize = 0;
-			}
-			werase(title);
-			wprintw(title, "Terminal size too small (Minimum: 46x18)");
-			wnoutrefresh(title);
-			doupdate();
+	while (key != 'q') {
+		if (y < 8 || x < 44) {
+			werase(stdscr);
+			addstr("terminal too small");
+			wrefresh(stdscr);
+			getmaxyx(stdscr, y, x);
+			key = getch();
 			continue;
 		}
 
-		if (resize) {
-			graphlines = (LINES - 8) / 2;
-			colsold = COLS;
-			endwin();
-			refresh();
-			resize = 0;
+		if (oldy != y || oldx != x) {
+			graphy = (y - 8) / 2;
+			if (graphy < 5) {
+				wresize(rxstats, y - 1, x / 2);
+				wresize(txstats, y - 1, x - x / 2);
+				mvwin(rxstats, 1, 0);
+				mvwin(txstats, 1, x / 2);
+			} else {
+				wresize(rxgraph, graphy, x);
+				wresize(txgraph, graphy, x);
+				wresize(rxstats, y - (graphy * 2 + 1), x / 2);
+				wresize(txstats, y - (graphy * 2 + 1), x - x / 2);
+				mvwin(rxgraph, 1, 0);
+				mvwin(txgraph, graphy + 1, 0);
+				mvwin(rxstats, graphy * 2 + 1, 0);
+				mvwin(txstats, graphy * 2 + 1, x / 2);
+			}
 
-			arrayresize(&ifa.rxs, COLS - 3, colsold - 3);
-			arrayresize(&ifa.txs, COLS - 3, colsold - 3);
-
-			wresize(title, 1, COLS);
-			wresize(rxgraph, graphlines, COLS);
-			wresize(txgraph, graphlines, COLS);
-			wresize(rxstats, LINES - (graphlines * 2 + 1), COLS / 2);
-			wresize(txstats, LINES - (graphlines * 2 + 1), COLS - COLS / 2);
-			mvwin(rxgraph, 1, 0);
-			mvwin(txgraph, graphlines + 1, 0);
-			mvwin(rxstats, graphlines * 2 + 1, 0);
-			mvwin(txstats, graphlines * 2 + 1, COLS / 2);
+			if (oldx != x) {
+				arrayresize(&ifa.rxs, x - 3, oldx - 3);
+				arrayresize(&ifa.txs, x - 3, oldx - 3);
+			}
 		}
 
-		werase(title);
-		printcenterw(title, "[ nbwmon-%s | Interface: %s ]", VERSION, ifa.ifname);
-		wnoutrefresh(title);
+		if (timer++ >= delay * 10) {
+			timer = 0;
+			if (!getdata(&ifa, x - 3))
+				eprintf("Can't read rx and tx bytes for %s\n", ifa.ifname);
+		}
 
-		printgraphw(rxgraph, "Received", graphlines, COLS, COLOR_PAIR(1),
+		werase(stdscr);
+		printcenterw(stdscr, "[ nbwmon-0.6 | interface: %s ]", ifa.ifname);
+		wnoutrefresh(stdscr);
+
+		printgraphw(rxgraph, "Received", graphy, x, COLOR_PAIR(1),
 				ifa.rxs, ifa.rxmin, ifa.rxmax);
-		printgraphw(txgraph, "Transmitted", graphlines, COLS, COLOR_PAIR(2),
+		printgraphw(txgraph, "Transmitted", graphy, x, COLOR_PAIR(2),
 				ifa.txs, ifa.txmin, ifa.txmax);
-
 		printstatsw(rxstats, "Received",
 				ifa.rxs[COLS - 4], ifa.rxmin, ifa.rxavg, ifa.rxmax, ifa.rx);
 		printstatsw(txstats, "Transmitted",
 				ifa.txs[COLS - 4], ifa.txmin, ifa.txavg, ifa.txmax, ifa.tx);
-
 		doupdate();
-	} while ((key = getch()) != 'q');
 
-	delwin(title);
+		oldy = y;
+		oldx = x;
+		getmaxyx(stdscr, y, x);
+		key = getch();
+	}
+
 	delwin(rxgraph);
 	delwin(txgraph);
 	delwin(rxstats);
 	delwin(txstats);
 	endwin();
-
 	free(ifa.rxs);
 	free(ifa.txs);
 
