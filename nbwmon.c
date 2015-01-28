@@ -54,7 +54,7 @@ bool colors = true;
 bool siunits = false;
 bool minimum = false;
 bool globalmax = false;
-double delay = 0.5;
+double delay = 1.0;
 
 unsigned long arraymax(unsigned long *array, size_t n, unsigned long max) {
 	size_t i;
@@ -130,28 +130,6 @@ char *bytestostr(double bytes) {
 	snprintf(buf, sizeof(buf), fmt, bytes, unit);
 
 	return buf;
-}
-
-void printrightedgew(WINDOW *win, const char *fmt, ...) {
-	va_list ap;
-	char buf[BUFSIZ];
-
-	va_start(ap, fmt);
-	vsnprintf(buf, BUFSIZ, fmt, ap);
-	va_end(ap);
-
-	mvwprintw(win, getcury(win), getmaxx(win) - 1 - strlen(buf), "%s", buf);
-}
-
-void printcenterw(WINDOW *win, const char *fmt, ...) {
-	va_list ap;
-	char buf[BUFSIZ];
-
-	va_start(ap, fmt);
-	vsnprintf(buf, BUFSIZ, fmt, ap);
-	va_end(ap);
-
-	mvwprintw(win, 0, (getmaxx(win) - strlen(buf)) / 2, "%s", buf);
 }
 
 bool detectiface(char *ifname) {
@@ -294,6 +272,28 @@ bool getdata(struct iface *ifa, int cols) {
 	return true;
 }
 
+void printrightedgew(WINDOW *win, const char *fmt, ...) {
+	va_list ap;
+	char buf[BUFSIZ];
+
+	va_start(ap, fmt);
+	vsnprintf(buf, BUFSIZ, fmt, ap);
+	va_end(ap);
+
+	mvwprintw(win, getcury(win), getmaxx(win) - 1 - strlen(buf), "%s", buf);
+}
+
+void printcenterw(WINDOW *win, const char *fmt, ...) {
+	va_list ap;
+	char buf[BUFSIZ];
+
+	va_start(ap, fmt);
+	vsnprintf(buf, BUFSIZ, fmt, ap);
+	va_end(ap);
+
+	mvwprintw(win, 0, (getmaxx(win) - strlen(buf)) / 2, "%s", buf);
+}
+
 void printgraphw(WINDOW *win, char *name, char *ifname, int color,
 		unsigned long *array, unsigned long min, unsigned long max) {
 	int y, x;
@@ -375,9 +375,9 @@ int main(int argc, char **argv) {
 	int y, x;
 	int oldy, oldx;
 	int graphy;
-	int key = ERR;
+	int key;
+	bool redraw = true;
 	long timer = 0;
-	bool resize;
 	struct timeval tv;
 	struct iface ifa;
 	WINDOW *rxgraph, *txgraph, *rxstats, *txstats;
@@ -414,10 +414,8 @@ int main(int argc, char **argv) {
 
 	initscr();
 	curs_set(FALSE);
-	timeout(10);
-	cbreak();
 	noecho();
-	keypad(stdscr, TRUE);
+	timeout(10);
 	if (colors && has_colors()) {
 		start_color();
 		use_default_colors();
@@ -425,8 +423,7 @@ int main(int argc, char **argv) {
 		init_pair(2, COLOR_RED, -1);
 	}
 	getmaxyx(stdscr, y, x);
-	oldy = y;
-	oldx = x;
+	getmaxyx(stdscr, oldy, oldx);
 
 	ifa.rxs = ecalloc(x - 3, sizeof(*ifa.rxs));
 	ifa.txs = ecalloc(x - 3, sizeof(*ifa.txs));
@@ -434,55 +431,48 @@ int main(int argc, char **argv) {
 	graphy = (y - 7) / 2;
 	rxgraph = newwin(graphy, x, 0, 0);
 	txgraph = newwin(graphy, x, graphy, 0);
-	rxstats = newwin(y - (graphy * 2), x / 2, graphy * 2, 0);
-	txstats = newwin(y - (graphy * 2), x - x / 2, graphy * 2, x / 2);
+	rxstats = newwin(y - graphy * 2, x / 2, graphy * 2, 0);
+	txstats = newwin(y - graphy * 2, x - x / 2, graphy * 2, x / 2);
 
-	while (key != 'q') {
-		resize = false;
-		if (y < 7 || x < 44) {
+	for (key = ERR; key != 'q'; key = getch()) {
+		if (y < 11 || x < 44) {
 			werase(stdscr);
 			addstr("terminal too small");
 			wrefresh(stdscr);
-			getmaxyx(stdscr, y, x);
-			key = getch();
+			if (key == KEY_RESIZE)
+				getmaxyx(stdscr, y, x);
 			continue;
 		}
+		werase(stdscr);
+		wnoutrefresh(stdscr);
 
 		if (oldy != y || oldx != x) {
-			resize = true;
 			graphy = (y - 7) / 2;
-			if (graphy < 5) {
-				wresize(rxstats, y, x / 2);
-				wresize(txstats, y, x - x / 2);
-				mvwin(rxstats, 0, 0);
-				mvwin(txstats, 0, x / 2);
-			} else {
-				wresize(rxgraph, graphy, x);
-				wresize(txgraph, graphy, x);
-				wresize(rxstats, y - (graphy * 2), x / 2);
-				wresize(txstats, y - (graphy * 2), x - x / 2);
-				mvwin(rxgraph, 0, 0);
-				mvwin(txgraph, graphy, 0);
-				mvwin(rxstats, graphy * 2, 0);
-				mvwin(txstats, graphy * 2, x / 2);
-			}
-
+			wresize(rxgraph, graphy, x);
+			wresize(txgraph, graphy, x);
+			wresize(rxstats, y - graphy * 2, x / 2);
+			wresize(txstats, y - graphy * 2, x - x / 2);
+			mvwin(rxgraph, 0, 0);
+			mvwin(txgraph, graphy, 0);
+			mvwin(rxstats, graphy * 2, 0);
+			mvwin(txstats, graphy * 2, x / 2);
 			if (oldx != x) {
 				arrayresize(&ifa.rxs, x - 3, oldx - 3);
 				arrayresize(&ifa.txs, x - 3, oldx - 3);
 			}
+			redraw = true;
 		}
 
 		gettimeofday(&tv, NULL);
-		tv.tv_usec = (1000 * (tv.tv_sec % 1000) + (tv.tv_usec / 1000)) / (delay * 1000);
-		if (!timer || timer != tv.tv_usec) {
-			resize = true;
+		tv.tv_usec = (tv.tv_sec * 1000 + tv.tv_usec / 1000) / (delay * 1000.0);
+		if (timer < tv.tv_usec) {
 			timer = tv.tv_usec;
 			if (!getdata(&ifa, x - 3))
 				eprintf("Can't read rx and tx bytes for %s\n", ifa.ifname);
+			redraw = true;
 		}
 
-		if (resize || key == KEY_RESIZE || key == 'r') {
+		if (redraw) {
 			printgraphw(rxgraph, "Received", ifa.ifname, COLOR_PAIR(1),
 					ifa.rxs, ifa.rxmin, ifa.rxmax);
 			printgraphw(txgraph, "Transmitted", NULL, COLOR_PAIR(2),
@@ -492,12 +482,13 @@ int main(int argc, char **argv) {
 			printstatsw(txstats, "Transmitted",
 					ifa.txs[x - 4], ifa.txmin, ifa.txavg, ifa.txmax, ifa.tx);
 			doupdate();
+			redraw = false;
 		}
 
 		oldy = y;
 		oldx = x;
-		getmaxyx(stdscr, y, x);
-		key = getch();
+		if (key == KEY_RESIZE)
+			getmaxyx(stdscr, y, x);
 	}
 
 	delwin(rxgraph);
