@@ -21,6 +21,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <limits.h>
+#include <sys/time.h>
 #ifdef __NetBSD__
 #include <ncurses/ncurses.h>
 #else
@@ -102,6 +103,12 @@ size_t arrayresize(unsigned long **array, size_t newsize, size_t oldsize) {
 	free(arraytmp);
 
 	return newsize;
+}
+
+unsigned long decisectime() {
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	return tv.tv_sec * 10 + tv.tv_usec / 100000;
 }
 
 char *bytestostr(double bytes) {
@@ -377,7 +384,7 @@ int main(int argc, char **argv) {
 	int oldy, oldx;
 	int graphy;
 	int key = ERR;
-	int timer = delay * 10;
+	unsigned long timer = 0;
 	struct iface ifa;
 	WINDOW *rxgraph, *txgraph, *rxstats, *txstats;
 
@@ -467,14 +474,14 @@ int main(int argc, char **argv) {
 			}
 		}
 
-		if (timer++ >= delay * 10) {
-			timer = 0;
+		if (!timer || decisectime() - timer >= delay * 10) {
+			timer = decisectime();
 			if (!getdata(&ifa, x - 3))
 				eprintf("Can't read rx and tx bytes for %s\n", ifa.ifname);
 		}
 
 		werase(stdscr);
-		printcenterw(stdscr, "[ nbwmon-0.6 | interface: %s ]", ifa.ifname);
+		printcenterw(stdscr, "[ nbwmon-%s | interface: %s ]", VERSION, ifa.ifname);
 		wnoutrefresh(stdscr);
 
 		printgraphw(rxgraph, "Received", graphy, x, COLOR_PAIR(1),
