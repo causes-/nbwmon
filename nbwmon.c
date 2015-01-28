@@ -157,7 +157,7 @@ void printcenterw(WINDOW *win, const char *fmt, ...) {
 	vsnprintf(buf, BUFSIZ, fmt, ap);
 	va_end(ap);
 
-	mvwprintw(win, getcury(win), (getmaxx(win) - strlen(buf)) / 2, "%s", buf);
+	mvwprintw(win, 0, (getmaxx(win) - strlen(buf)) / 2, "%s", buf);
 }
 
 bool detectiface(char *ifname) {
@@ -300,7 +300,7 @@ bool getdata(struct iface *ifa, int cols) {
 	return true;
 }
 
-void printgraphw(WINDOW *win, char *name, int color,
+void printgraphw(WINDOW *win, char *name, char *ifname, int color,
 		unsigned long *array, unsigned long min, unsigned long max) {
 	int y, x;
 	int i, j;
@@ -318,6 +318,8 @@ void printgraphw(WINDOW *win, char *name, int color,
 		mvwprintw(win, y - 1, 1, "[ %s/s ]", bytestostr(min));
 	else
 		mvwprintw(win, y - 1, 1, "[ %s/s ]", bytestostr(0));
+	if (ifname)
+		printcenterw(win, "[ nbwmon-%s | interface: %s ]", VERSION, ifname);
 
 	wattron(win, color);
 	for (i = 0; i < (y - 2); i++) {
@@ -435,14 +437,14 @@ int main(int argc, char **argv) {
 	ifa.rxs = ecalloc(x - 3, sizeof(*ifa.rxs));
 	ifa.txs = ecalloc(x - 3, sizeof(*ifa.txs));
 
-	graphy = (y - 8) / 2;
-	rxgraph = newwin(graphy, x, 1, 0);
-	txgraph = newwin(graphy, x, graphy + 1, 0);
-	rxstats = newwin(y - (graphy * 2 + 1), x / 2, graphy * 2 + 1, 0);
-	txstats = newwin(y - (graphy * 2 + 1), x - x / 2, graphy * 2 + 1, x / 2);
+	graphy = (y - 7) / 2;
+	rxgraph = newwin(graphy, x, 0, 0);
+	txgraph = newwin(graphy, x, graphy, 0);
+	rxstats = newwin(y - (graphy * 2), x / 2, graphy * 2, 0);
+	txstats = newwin(y - (graphy * 2), x - x / 2, graphy * 2, x / 2);
 
 	while (key != 'q') {
-		if (y < 8 || x < 44) {
+		if (y < 7 || x < 44) {
 			werase(stdscr);
 			addstr("terminal too small");
 			wrefresh(stdscr);
@@ -452,21 +454,21 @@ int main(int argc, char **argv) {
 		}
 
 		if (oldy != y || oldx != x) {
-			graphy = (y - 8) / 2;
+			graphy = (y - 7) / 2;
 			if (graphy < 5) {
-				wresize(rxstats, y - 1, x / 2);
-				wresize(txstats, y - 1, x - x / 2);
-				mvwin(rxstats, 1, 0);
-				mvwin(txstats, 1, x / 2);
+				wresize(rxstats, y, x / 2);
+				wresize(txstats, y, x - x / 2);
+				mvwin(rxstats, 0, 0);
+				mvwin(txstats, 0, x / 2);
 			} else {
 				wresize(rxgraph, graphy, x);
 				wresize(txgraph, graphy, x);
-				wresize(rxstats, y - (graphy * 2 + 1), x / 2);
-				wresize(txstats, y - (graphy * 2 + 1), x - x / 2);
-				mvwin(rxgraph, 1, 0);
-				mvwin(txgraph, graphy + 1, 0);
-				mvwin(rxstats, graphy * 2 + 1, 0);
-				mvwin(txstats, graphy * 2 + 1, x / 2);
+				wresize(rxstats, y - (graphy * 2), x / 2);
+				wresize(txstats, y - (graphy * 2), x - x / 2);
+				mvwin(rxgraph, 0, 0);
+				mvwin(txgraph, graphy, 0);
+				mvwin(rxstats, graphy * 2, 0);
+				mvwin(txstats, graphy * 2, x / 2);
 			}
 
 			if (oldx != x) {
@@ -481,11 +483,8 @@ int main(int argc, char **argv) {
 				eprintf("Can't read rx and tx bytes for %s\n", ifa.ifname);
 		}
 
-		werase(stdscr);
-		printcenterw(stdscr, "[ nbwmon-%s | interface: %s ]", VERSION, ifa.ifname);
-		wnoutrefresh(stdscr);
-		printgraphw(rxgraph, "Received", COLOR_PAIR(1), ifa.rxs, ifa.rxmin, ifa.rxmax);
-		printgraphw(txgraph, "Transmitted", COLOR_PAIR(2), ifa.txs, ifa.txmin, ifa.txmax);
+		printgraphw(rxgraph, "Received", ifa.ifname, COLOR_PAIR(1), ifa.rxs, ifa.rxmin, ifa.rxmax);
+		printgraphw(txgraph, "Transmitted", NULL, COLOR_PAIR(2), ifa.txs, ifa.txmin, ifa.txmax);
 		printstatsw(rxstats, "Received", ifa.rxs[x - 4], ifa.rxmin, ifa.rxavg, ifa.rxmax, ifa.rx);
 		printstatsw(txstats, "Transmitted", ifa.txs[x - 4], ifa.txmin, ifa.txavg, ifa.txmax, ifa.tx);
 		doupdate();
