@@ -50,7 +50,6 @@ struct iface {
 };
 
 char *argv0;
-
 bool colors = true;
 bool siunits = false;
 bool minimum = false;
@@ -329,7 +328,7 @@ void printgraphw(WINDOW *win, char *name, int color,
 				else
 					height = y - 3 - ((double) array[j] / max * y);
 
-				if (height < y)
+				if (height < i)
 					mvwaddch(win, i + 1, j + 2, '*');
 			}
 		}
@@ -485,15 +484,10 @@ int main(int argc, char **argv) {
 		werase(stdscr);
 		printcenterw(stdscr, "[ nbwmon-%s | interface: %s ]", VERSION, ifa.ifname);
 		wnoutrefresh(stdscr);
-
-		printgraphw(rxgraph, "Received", COLOR_PAIR(1),
-				ifa.rxs, ifa.rxmin, ifa.rxmax);
-		printgraphw(txgraph, "Transmitted", COLOR_PAIR(2),
-				ifa.txs, ifa.txmin, ifa.txmax);
-		printstatsw(rxstats, "Received",
-				ifa.rxs[COLS - 4], ifa.rxmin, ifa.rxavg, ifa.rxmax, ifa.rx);
-		printstatsw(txstats, "Transmitted",
-				ifa.txs[COLS - 4], ifa.txmin, ifa.txavg, ifa.txmax, ifa.tx);
+		printgraphw(rxgraph, "Received", COLOR_PAIR(1), ifa.rxs, ifa.rxmin, ifa.rxmax);
+		printgraphw(txgraph, "Transmitted", COLOR_PAIR(2), ifa.txs, ifa.txmin, ifa.txmax);
+		printstatsw(rxstats, "Received", ifa.rxs[x - 4], ifa.rxmin, ifa.rxavg, ifa.rxmax, ifa.rx);
+		printstatsw(txstats, "Transmitted", ifa.txs[x - 4], ifa.txmin, ifa.txavg, ifa.txmax, ifa.tx);
 		doupdate();
 
 		oldy = y;
