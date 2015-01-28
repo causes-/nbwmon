@@ -301,34 +301,36 @@ bool getdata(struct iface *ifa, int cols) {
 	return true;
 }
 
-void printgraphw(WINDOW *win, char *name, int lines, int cols, int color,
+void printgraphw(WINDOW *win, char *name, int color,
 		unsigned long *array, unsigned long min, unsigned long max) {
 	int y, x;
+	int i, j;
 	double height;
 
+	getmaxyx(win, y, x);
 	werase(win);
 
 	box(win, 0, 0);
-	mvwvline(win, 0, 1, '-', lines-1);
+	mvwvline(win, 0, 1, '-', y - 1);
 	if (name)
-		mvwprintw(win, 0, cols - 5 - strlen(name), "[ %s ]",name);
+		mvwprintw(win, 0, x - 5 - strlen(name), "[ %s ]",name);
 	mvwprintw(win, 0, 1, "[ %s/s ]", bytestostr(max));
 	if (minimum)
-		mvwprintw(win, lines-1, 1, "[ %s/s ]", bytestostr(min));
+		mvwprintw(win, y - 1, 1, "[ %s/s ]", bytestostr(min));
 	else
-		mvwprintw(win, lines-1, 1, "[ %s/s ]", bytestostr(0));
+		mvwprintw(win, y - 1, 1, "[ %s/s ]", bytestostr(0));
 
 	wattron(win, color);
-	for (y = 0; y < (lines - 2); y++) {
-		for (x = 0; x < (cols - 3); x++) {
-			if (array[x] && max) {
+	for (i = 0; i < (y - 2); i++) {
+		for (j = 0; j < (x - 3); j++) {
+			if (array[j] && max) {
 				if (minimum)
-					height = lines - 3 - (((double) array[x] - min) / (max - min) * lines);
+					height = y - 3 - (((double) array[j] - min) / (max - min) * y);
 				else
-					height = lines - 3 - ((double) array[x] / max * lines);
+					height = y - 3 - ((double) array[j] / max * y);
 
 				if (height < y)
-					mvwaddch(win, y + 1, x + 2, '*');
+					mvwaddch(win, i + 1, j + 2, '*');
 			}
 		}
 	}
@@ -484,9 +486,9 @@ int main(int argc, char **argv) {
 		printcenterw(stdscr, "[ nbwmon-%s | interface: %s ]", VERSION, ifa.ifname);
 		wnoutrefresh(stdscr);
 
-		printgraphw(rxgraph, "Received", graphy, x, COLOR_PAIR(1),
+		printgraphw(rxgraph, "Received", COLOR_PAIR(1),
 				ifa.rxs, ifa.rxmin, ifa.rxmax);
-		printgraphw(txgraph, "Transmitted", graphy, x, COLOR_PAIR(2),
+		printgraphw(txgraph, "Transmitted", COLOR_PAIR(2),
 				ifa.txs, ifa.txmin, ifa.txmax);
 		printstatsw(rxstats, "Received",
 				ifa.rxs[COLS - 4], ifa.rxmin, ifa.rxavg, ifa.rxmax, ifa.rx);
