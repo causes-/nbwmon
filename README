@@ -12,16 +12,21 @@ Features
 * Support for multiple units.
 * Support for colors.
 
+Keyboard
+--------
+s = Use SI / IEC units
+m = Scale graph minimum
+g = Show global maximum
+
 Usage
 -----
-usage: nbwmon [options]
+usage: ./nbwmon [options]
+-h    Help
+-v    Version
+-C    No colors
+-s    Use SI units
+-m    Scale graph minimum
+-g    Show global maximum
 
--h    help
--v    version
--C    no colors
--s    use SI units
--m    scale graph minimum
--g    show global maximum
-
--d <seconds>      redraw delay
--i <interface>    network interface
+-d <seconds>      Redraw delay
+-i <interface>    Network interface

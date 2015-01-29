@@ -33,7 +33,7 @@
 #include "arg.h"
 #include "util.h"
 
-#define VERSION "0.5.2"
+#define VERSION "0.6"
 
 struct iface {
 	char ifname[IFNAMSIZ];
@@ -88,16 +88,13 @@ unsigned long arrayavg(unsigned long *array, size_t n) {
 size_t arrayresize(unsigned long **array, size_t newsize, size_t oldsize) {
 	unsigned long *arraytmp;
 
-	if (newsize == oldsize || !newsize || !oldsize)
-		return -1;
-
 	arraytmp = *array;
 	*array = ecalloc(newsize, sizeof(**array));
 
 	if (newsize > oldsize)
-		memcpy(*array+(newsize-oldsize), arraytmp, sizeof(**array) * oldsize);
+		memcpy(*array + (newsize - oldsize), arraytmp, sizeof(**array) * oldsize);
 	else
-		memcpy(*array, arraytmp+(oldsize-newsize), sizeof(**array) * newsize);
+		memcpy(*array, arraytmp + (oldsize - newsize), sizeof(**array) * newsize);
 
 	free(arraytmp);
 
@@ -110,8 +107,6 @@ char *bytestostr(double bytes) {
 	static char buf[32];
 	static const char iec[][4] = { "B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB" };
 	static const char si[][3] = { "B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
-	const char *unit;
-	char *fmt;
 	double prefix;
 
 	if (siunits) {
@@ -125,9 +120,7 @@ char *bytestostr(double bytes) {
 	for (i = 0; bytes >= prefix && i < cols; i++)
 		bytes /= prefix;
 
-	fmt = i ? "%.2f %s" : "%.0f %s";
-	unit = siunits ? si[i] : iec[i];
-	snprintf(buf, sizeof(buf), fmt, bytes, unit);
+	snprintf(buf, sizeof(buf), i ? "%.2f %s" : "%.0f %s", bytes, siunits ? si[i] : iec[i]);
 
 	return buf;
 }
@@ -272,7 +265,7 @@ bool getdata(struct iface *ifa, int cols) {
 	return true;
 }
 
-void printrightedgew(WINDOW *win, const char *fmt, ...) {
+void printrightw(WINDOW *win, const char *fmt, ...) {
 	va_list ap;
 	char buf[BUFSIZ];
 
@@ -343,15 +336,15 @@ void printstatsw(WINDOW *win, char *name,
 		mvwprintw(win, 0, 1, "[ %s ]", name);
 
 	mvwprintw(win, 1, 1, "Current:");
-	printrightedgew(win, "%s/s", bytestostr(cur));
+	printrightw(win, "%s/s", bytestostr(cur));
 	mvwprintw(win, 2, 1, "Maximum:");
-	printrightedgew(win, "%s/s", bytestostr(max));
+	printrightw(win, "%s/s", bytestostr(max));
 	mvwprintw(win, 3, 1, "Average:");
-	printrightedgew(win, "%s/s", bytestostr(avg));
+	printrightw(win, "%s/s", bytestostr(avg));
 	mvwprintw(win, 4, 1, "Minimum:");
-	printrightedgew(win, "%s/s", bytestostr(min));
+	printrightw(win, "%s/s", bytestostr(min));
 	mvwprintw(win, 5, 1, "Total:");
-	printrightedgew(win, "%s", bytestostr(total));
+	printrightw(win, "%s", bytestostr(total));
 
 	wnoutrefresh(win);
 }
@@ -375,8 +368,10 @@ int main(int argc, char **argv) {
 	int y, x;
 	int oldy, oldx;
 	int graphy;
+	int xhalf, graphyx2;
 	int key;
 	bool redraw = true;
+	bool erase = true;
 	long timer = 0;
 	struct timeval tv;
 	struct iface ifa;
@@ -411,6 +406,8 @@ int main(int argc, char **argv) {
 
 	if (!detectiface(ifa.ifname))
 		eprintf("Can't find network interface\n");
+	if (!getcounters(ifa.ifname, &ifa.rx, &ifa.tx))
+		eprintf("Can't read rx and tx bytes for %s\n", ifa.ifname);
 
 	initscr();
 	curs_set(FALSE);
@@ -435,27 +432,47 @@ int main(int argc, char **argv) {
 	txstats = newwin(y - graphy * 2, x - x / 2, graphy * 2, x / 2);
 
 	for (key = ERR; key != 'q'; key = getch()) {
+		if (key != ERR)
+			redraw = true;
+		switch (key) {
+		case 's':
+			siunits = !siunits;
+			break;
+		case 'm':
+			minimum = !minimum;
+			break;
+		case 'g':
+			globalmax = !globalmax;
+			break;
+		}
+
 		if (y < 11 || x < 44) {
 			werase(stdscr);
 			addstr("terminal too small");
 			wrefresh(stdscr);
 			if (key == KEY_RESIZE)
 				getmaxyx(stdscr, y, x);
+			erase = true;
 			continue;
 		}
-		werase(stdscr);
-		wnoutrefresh(stdscr);
+		if (erase) {
+			werase(stdscr);
+			wnoutrefresh(stdscr);
+			erase = false;
+		}
 
 		if (oldy != y || oldx != x) {
 			graphy = (y - 7) / 2;
+			graphyx2 = graphy * 2;
+			xhalf = x / 2;
 			wresize(rxgraph, graphy, x);
 			wresize(txgraph, graphy, x);
-			wresize(rxstats, y - graphy * 2, x / 2);
-			wresize(txstats, y - graphy * 2, x - x / 2);
+			wresize(rxstats, y - graphyx2, xhalf);
+			wresize(txstats, y - graphyx2, x - xhalf);
 			mvwin(rxgraph, 0, 0);
 			mvwin(txgraph, graphy, 0);
-			mvwin(rxstats, graphy * 2, 0);
-			mvwin(txstats, graphy * 2, x / 2);
+			mvwin(rxstats, graphyx2, 0);
+			mvwin(txstats, graphyx2, xhalf);
 			if (oldx != x) {
 				arrayresize(&ifa.rxs, x - 3, oldx - 3);
 				arrayresize(&ifa.txs, x - 3, oldx - 3);
@@ -465,7 +482,7 @@ int main(int argc, char **argv) {
 
 		gettimeofday(&tv, NULL);
 		tv.tv_usec = (tv.tv_sec * 1000 + tv.tv_usec / 1000) / (delay * 1000.0);
-		if (timer < tv.tv_usec) {
+		if (timer != tv.tv_usec) {
 			timer = tv.tv_usec;
 			if (!getdata(&ifa, x - 3))
 				eprintf("Can't read rx and tx bytes for %s\n", ifa.ifname);
