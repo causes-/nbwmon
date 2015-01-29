@@ -372,6 +372,7 @@ int main(int argc, char **argv) {
 	int key;
 	bool redraw = true;
 	bool erase = true;
+	bool changedelay = false;
 	long timer = 0;
 	struct timeval tv;
 	struct iface ifa;
@@ -444,6 +445,18 @@ int main(int argc, char **argv) {
 		case 'g':
 			globalmax = !globalmax;
 			break;
+		case '+':
+			if (delay < 8) {
+				delay *= 2;
+				changedelay = true;
+			}
+			break;
+		case '-':
+			if (delay > 0.25) {
+				delay /= 2;
+				changedelay = true;
+			}
+			break;
 		}
 
 		if (y < 11 || x < 44) {
@@ -482,6 +495,10 @@ int main(int argc, char **argv) {
 
 		gettimeofday(&tv, NULL);
 		tv.tv_usec = (tv.tv_sec * 1000 + tv.tv_usec / 1000) / (delay * 1000.0);
+		if (changedelay) {
+			timer = tv.tv_usec;
+			changedelay = false;
+		}
 		if (timer != tv.tv_usec) {
 			timer = tv.tv_usec;
 			if (!getdata(&ifa, x - 3))

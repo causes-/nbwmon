@@ -1,0 +1,49 @@
+.Dd Jan 29, 2015
+.Dt NBWMON 1
+.Os
+.Sh NAME
+.Nm nbwmon
+.Nd ncurses bandwidth monitor
+.Sh SYNOPSIS
+.Nm nbwmon
+.Op Fl hvCsmg
+.Op Fl d Ar delay
+.Op Fl i Ar interface
+.Sh DESCRIPTION
+The
+.Nm
+program reads data from network interface. It prints bandwidth graphs
+for transmitted and received data.
+.Pp
+Runtime options:
+.Bl -tag -width Ds
+.It s
+Use SI / IEC units
+.It m
+Scale graph minimum
+.It g
+Show global maximum
+.It +
+Increase redraw delay
+.It -
+Decrease redraw delay
+.El
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Fl h
+Show help.
+.It Fl v
+Show version.
+.It Fl C
+Disable colors.
+.It Fl s
+Use SI units.
+.It Fl m
+Scale graph minimum.
+.It Fl g
+Show global maximum.
+.It Fl d Ar delay
+Set redraw delay in seconds.
+.It Fl i Ar interface
+Select network interface.
+.El

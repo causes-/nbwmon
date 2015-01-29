@@ -17,6 +17,8 @@ Keyboard
 s = Use SI / IEC units
 m = Scale graph minimum
 g = Show global maximum
++ = Increase redraw delay
+- = Decrease redraw delay
 
 Usage
 -----
