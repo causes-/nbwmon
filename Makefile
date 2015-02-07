@@ -9,9 +9,12 @@ MANPREFIX = $(PREFIX)/man
 BIN = nbwmon
 OBJ = nbwmon.o util.o
 
-$(BIN): $(OBJ)
-
 all: $(BIN)
+
+$(BIN): $(OBJ)
+	$(CC) $(CFLAGS) -o $@ $(OBJ) $(LDLIBS)
+
+$(OBJ): util.h
 
 clean:
 	rm -f $(BIN) $(OBJ)
@@ -25,3 +28,6 @@ install: all
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/$(BIN)
 	rm -f $(DESTDIR)$(MANPREFIX)/man1/$(BIN).1
+
+.PHONY:
+	all clean install uninstall
