@@ -412,7 +412,7 @@ int main(int argc, char **argv) {
 	} ARGEND;
 
 	if (!detectiface(ifa.ifname))
-		eprintf("Can't find network interface\n");
+		eprintf("Can't find network interface %s\n", ifa.ifname);
 	if (!getcounters(ifa.ifname, &ifa.rx, &ifa.tx))
 		eprintf("Can't read rx and tx bytes for %s\n", ifa.ifname);
 
