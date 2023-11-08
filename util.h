@@ -3,6 +3,7 @@
 
 #define LEN(x) (sizeof (x) / sizeof *(x))
 
+__attribute__ ((noreturn))
 void eprintf(const char *fmt, ...);
 
 void *emalloc(size_t size);

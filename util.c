@@ -4,6 +4,7 @@
 #include <string.h>
 #include <ncurses.h>
 
+__attribute__ ((noreturn))
 void eprintf(const char *fmt, ...) {
 	va_list ap;
 
